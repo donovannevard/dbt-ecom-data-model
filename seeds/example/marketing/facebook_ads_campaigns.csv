@@ -1,0 +1,4 @@
+id,name,objective,status,start_date,end_date,_fivetran_synced
+1,Facebook Cpc Retargeting,conversions,active,2026-02-19,2026-04-17,2026-04-17T14:10:00Z
+2,Facebook Cpc Lookalike Prospecting,conversions,active,2026-01-31,2026-03-19,2026-03-19T01:50:00Z
+3,Facebook Leadgen Campaign,lead_generation,active,2026-04-22,2026-06-30,2026-06-30T03:22:00Z

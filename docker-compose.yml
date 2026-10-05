@@ -1,0 +1,75 @@
+# `docker compose up` builds the entire dbt project and serves its docs at
+# http://localhost:8080 (override with DBT_DOCS_PORT). Nothing else is
+# required on the host.
+
+services:
+  dbt:
+    build:
+      context: .
+      target: dbt
+    image: dbt-ecom-data-model:local
+    container_name: dbt-ecom-data-model
+    # The container always serves on 8080 internally; only the published host
+    # port moves. Override it when 8080 is already taken — e.g. by another
+    # project's Airflow — without touching this file:
+    #     DBT_DOCS_PORT=8081 docker compose up
+    ports:
+      - "${DBT_DOCS_PORT:-8080}:8080"
+    # Passed through so the startup banner can name the host port the docs are
+    # actually reachable on, rather than guessing.
+    environment:
+      DBT_DOCS_PORT: ${DBT_DOCS_PORT:-8080}
+    # The project, its DuckDB database and target/ all live inside the
+    # container. Nothing is mounted from the host by default, which is the
+    # point: what you see is what a clean clone produces, not what your local
+    # machine happens to have lying around.
+    #
+    # For iterating on models, uncomment the mount below and run
+    # `docker compose run --rm dbt dbt build` after each edit. Note that it
+    # shadows the image's dbt_packages, so run `dbt deps` once first.
+    # volumes:
+    #   - .:/dbt
+
+  # One-off commands and an interactive shell in the same environment. The
+  # image entrypoint execs whatever you pass it, so no override is needed —
+  # and overriding the entrypoint with bash would break `run ... dbt test`,
+  # because bash would then treat "dbt" as a script to interpret.
+  #
+  #   docker compose run --rm cli bash
+  #   docker compose run --rm cli dbt ls --resource-type model
+  #
+  # Each run starts from the image with no database, so build first in the
+  # same container when you need data:
+  #
+  #   docker compose run --rm cli sh -c "dbt seed -q && dbt build -q && dbt test"
+  #
+  # No published ports, so this never collides with a running `compose up`.
+  cli:
+    build:
+      context: .
+      target: dbt
+    image: dbt-ecom-data-model:local
+    profiles: ["tools"]
+
+  # The orchestrator: Dagster's asset graph, the daily schedule and run
+  # history at http://localhost:3000.
+  #
+  #   docker compose --profile orchestration up
+  #
+  # Behind a profile so a plain `docker compose up` stays the light dbt-only
+  # path and nobody downloads Dagster to read the docs.
+  #
+  # Run the pipeline headlessly instead of through the UI:
+  #   docker compose run --rm dagster \
+  #     dagster asset materialize --select '*' -m orchestration.definitions
+  dagster:
+    build:
+      context: .
+      target: orchestration
+    image: dbt-ecom-data-model:orchestration
+    container_name: dbt-ecom-orchestration
+    profiles: ["orchestration"]
+    ports:
+      - "${DAGSTER_PORT:-3000}:3000"
+    environment:
+      DAGSTER_PORT: ${DAGSTER_PORT:-3000}

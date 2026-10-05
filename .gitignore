@@ -1,0 +1,64 @@
+# dbt
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# Compiled files
+*.pyc
+__pycache__/
+
+# Local dbt profile overrides.
+# profiles.yml itself IS committed: its default target is DuckDB and it holds
+# no credentials (the Snowflake targets read env_var only), so a fresh clone
+# can run `dbt build` with no setup. Personal overrides go in profiles.local.yml.
+profiles.local.yml
+profiles.yaml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables.
+#
+# Real credential files are ignored:
+#     .env  .env.snowflake  .env.redshift
+# Templates end in .example and are tracked:
+#     .env.snowflake.example  .env.redshift.example
+#
+# The `!.env.*.example` exception is load-bearing: without it `.env.*` swallows
+# the templates and they silently never get committed. Anything NOT ending in
+# .example stays ignored, so a real credential file can never slip through.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Terraform (if you ever add it to this repo)
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# General junk
+*.log
+*.tmp
+
+# Python virtualenvs (.venv, plus .venv-airflow used to parse-check the
+# reference Airflow DAGs — see orchestration/external/README.md)
+.venv*/
+venv/
+
+# DuckDB local database files
+*.duckdb
+*.duckdb.wal
+
+# Dagster local instance (run history, logs)
+.dagster/

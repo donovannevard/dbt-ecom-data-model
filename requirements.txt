@@ -1,0 +1,12 @@
+# Local development, exploration and CI run on DuckDB — no warehouse account,
+# no credentials. This is the only install needed to build the project.
+dbt-core==1.12.5
+dbt-duckdb==1.11.0
+
+# Production adapters. Uncomment the one you deploy to and build with the
+# matching target, e.g. `dbt build --target snowflake_prod` or
+# `--target redshift_prod`.
+# Both are supported by the dispatched macros in macros/ but neither is
+# exercised by CI — see the warehouse support table in the README.
+# dbt-snowflake==1.11.*
+# dbt-redshift==1.11.*

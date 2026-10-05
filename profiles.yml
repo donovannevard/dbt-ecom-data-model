@@ -1,0 +1,85 @@
+# Default profile: DuckDB, zero configuration.
+#
+# `dbt build` works immediately after a clone — no credentials, no warehouse,
+# no account. The whole project (seeds, snapshots, models, tests) materialises
+# into a single local file, dev.duckdb, which is gitignored.
+#
+# The Snowflake and Redshift targets below are the shape this project runs in
+# production. They read every value from the environment (see
+# .env.snowflake.example and .env.redshift.example),
+# so no secret ever lands in this file.
+#
+# Each target points at its own database. That is required, not stylistic:
+# macros/generate_schema_name.sql makes custom schemas absolute, so two
+# targets sharing a database would write to the same `extract`, `seeds` and
+# `snapshots` schemas and corrupt each other's history.
+
+dbt_ecom_data_model:
+  target: dev
+  outputs:
+    # ---- DuckDB: local development and CI (default) --------------------
+    dev:
+      type: duckdb
+      path: dev.duckdb
+      threads: 4
+
+    ci:
+      type: duckdb
+      path: ci.duckdb
+      threads: 4
+
+    # ---- Snowflake ----------------------------------------------------
+    # Named <warehouse>_<env> so a fourth warehouse slots in without
+    # renaming anything: bigquery_prod, databricks_prod, and so on.
+    snowflake_prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      role: "{{ env_var('SNOWFLAKE_TRANSFORM_ROLE') }}"
+      user: "{{ env_var('DB_TRANSFORM_USER') }}"
+      password: "{{ env_var('DB_TRANSFORM_PASSWORD') }}"
+      database: "{{ env_var('DB_TRANSFORM_DATABASE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_TRANSFORM_WAREHOUSE') }}"
+      schema: transform
+      threads: 8
+
+    snowflake_dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      role: "{{ env_var('SNOWFLAKE_TRANSFORM_ROLE') }}"
+      user: "{{ env_var('DB_TRANSFORM_USER') }}"
+      password: "{{ env_var('DB_TRANSFORM_PASSWORD') }}"
+      database: "{{ env_var('DB_TRANSFORM_DATABASE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_TRANSFORM_WAREHOUSE') }}"
+      schema: test
+      threads: 4
+
+    # ---- Redshift: production ------------------------------------------
+    # A real Redshift deployment should also add distribution and sort keys
+    # to the large fact tables; none are set here because they are
+    # cluster- and query-pattern-specific, and a wrong DISTKEY is worse than
+    # none. See the README's Redshift note.
+    redshift_prod:
+      type: redshift
+      host: "{{ env_var('REDSHIFT_HOST') }}"
+      user: "{{ env_var('DB_TRANSFORM_USER') }}"
+      password: "{{ env_var('DB_TRANSFORM_PASSWORD') }}"
+      dbname: "{{ env_var('DB_TRANSFORM_DATABASE') }}"
+      port: "{{ env_var('REDSHIFT_PORT', '5439') | int }}"
+      schema: transform
+      threads: 8
+      sslmode: prefer
+      keepalives_idle: 240
+      connect_timeout: 10
+
+    redshift_dev:
+      type: redshift
+      host: "{{ env_var('REDSHIFT_HOST') }}"
+      user: "{{ env_var('DB_TRANSFORM_USER') }}"
+      password: "{{ env_var('DB_TRANSFORM_PASSWORD') }}"
+      dbname: "{{ env_var('DB_TRANSFORM_DATABASE') }}"
+      port: "{{ env_var('REDSHIFT_PORT', '5439') | int }}"
+      schema: test
+      threads: 4
+      sslmode: prefer
+      keepalives_idle: 240
+      connect_timeout: 10

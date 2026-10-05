@@ -1,0 +1,72 @@
+name: 'dbt_ecom_data_model'
+version: '1.0.0'
+config-version: 2
+
+# Profile to use
+profile: 'dbt_ecom_data_model'
+
+# File paths
+model-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+docs-paths: ["docs"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Global defaults
+models:
+  dbt_ecom_data_model:
+    +materialized: table
+    +enabled: true
+
+    # Staging layer — all staging models go to 'staging' schema
+    staging:
+      +materialized: view # Staging as views = fast iteration, no storage cost
+
+    # Intermediate models — business logic
+    intermediate:
+      +materialized: table
+
+    # Analytics layer — final BI-ready models (dim_/fct_/agg_*)
+    # dbt_project.yml config paths follow directory structure, not filename
+    # patterns, so all analytics models materialize as `table` by default here.
+    # A large fact table that needs incremental loading should set that via
+    # `{{ config(materialized='incremental', ...) }}` in the model file itself.
+    analytics:
+      +materialized: table
+
+# Seeds — reference data lands in the `seeds` schema; the `example/` demo
+# dataset lands in `extract` so it stands in for real raw/ELT-landed tables
+# and staging models' source() calls resolve against it out of the box.
+seeds:
+  dbt_ecom_data_model:
+    +schema: seeds
+
+    example:
+      +schema: extract
+
+# Snapshots — SCD Type 2
+snapshots:
+  dbt_ecom_data_model:
+    +target_schema: snapshots
+
+# Tests — fail loud and clear
+tests:
+  dbt_ecom_data_model:
+    +severity: error
+    +store_failures: true
+
+# Packages will be installed via packages.yml
+require-dbt-version: [">=1.6.0", "<2.0.0"]
+
+# Client-tunable settings — override per environment with --vars or in a
+# target-specific vars block.
+vars:
+  reporting_currency: 'GBP'
+  fiscal_year_start_month: 1 # 1 = fiscal year matches calendar year

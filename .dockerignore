@@ -1,0 +1,24 @@
+# Build context hygiene. Anything listed here never reaches the image, which
+# keeps the context small and — more importantly — stops a host-built DuckDB
+# file or virtualenv leaking in and masking what the image actually produces.
+
+.venv/
+venv/
+target/
+dbt_packages/
+logs/
+*.duckdb
+*.duckdb.wal
+
+.git/
+.github/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.local
+.vscode/
+.idea/
+
+# Docs are generated inside the container, never copied in.
+docs/*.html

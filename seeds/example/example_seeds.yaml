@@ -1,0 +1,199 @@
+version: 2
+
+# Explicit column types for the demo dataset.
+#
+# These CSVs stand in for ELT-landed raw tables, and without declared types
+# each adapter applies its own CSV inference: DuckDB sniffs the file, Redshift
+# and Snowflake do not sniff it the same way, and a column that lands as
+# INTEGER on one warehouse and VARCHAR on another changes what the staging
+# layer's casts and NULL handling actually do. Declaring them here is what
+# makes "runs on DuckDB, Snowflake or Redshift" a real claim rather than a
+# hopeful one.
+#
+# Types are deliberately the portable subset — integer, varchar, date,
+# timestamp, numeric(p,s) — which all three spell identically.
+#
+# Note the two nullable columns that matter: prod_web_visits.customer_id
+# (anonymous visits have no customer) and the gclid columns (organic traffic
+# has no click id). Both are empty strings in the CSV and must land as NULL,
+# not as a zero or an empty string, or attribution coverage silently changes.
+
+seeds:
+  - name: exchange_rates
+    config:
+      column_types:
+        date: date
+        base_currency: varchar(3)
+        target_currency: varchar(3)
+        rate: numeric(12, 6)
+        _fivetran_synced: timestamp
+
+  - name: google_analytics_sessions
+    config:
+      column_types:
+        id: integer
+        session_date: date
+        source: varchar
+        medium: varchar
+        campaign: varchar
+        device_category: varchar
+        pageviews: integer
+        session_duration_seconds: integer
+        _fivetran_synced: timestamp
+
+  - name: stripe_payments
+    config:
+      column_types:
+        id: varchar
+        order_id: integer
+        amount: numeric(12, 2)
+        currency: varchar(3)
+        status: varchar
+        created_at: date
+        _fivetran_synced: timestamp
+
+  - name: stripe_refunds
+    config:
+      column_types:
+        id: varchar
+        payment_id: varchar
+        amount: numeric(12, 2)
+        reason: varchar
+        created_at: date
+        _fivetran_synced: timestamp
+
+  - name: google_ads_campaigns
+    config:
+      column_types:
+        id: integer
+        name: varchar
+        status: varchar
+        campaign_type: varchar
+        start_date: date
+        end_date: date
+        _fivetran_synced: timestamp
+
+  - name: google_ads_ad_groups
+    config:
+      column_types:
+        id: integer
+        campaign_id: integer
+        name: varchar
+        status: varchar
+        _fivetran_synced: timestamp
+
+  - name: google_ads_ads
+    config:
+      column_types:
+        id: integer
+        ad_group_id: integer
+        headline: varchar
+        status: varchar
+        ad_type: varchar
+        _fivetran_synced: timestamp
+
+  - name: google_ads_clicks
+    config:
+      column_types:
+        id: integer
+        ad_id: integer
+        date: date
+        impressions: integer
+        clicks: integer
+        cost: numeric(12, 2)
+        conversions: integer
+        _fivetran_synced: timestamp
+
+  - name: facebook_ads_campaigns
+    config:
+      column_types:
+        id: integer
+        name: varchar
+        objective: varchar
+        status: varchar
+        start_date: date
+        end_date: date
+        _fivetran_synced: timestamp
+
+  - name: facebook_ads_ad_sets
+    config:
+      column_types:
+        id: integer
+        campaign_id: integer
+        name: varchar
+        status: varchar
+        daily_budget: numeric(12, 2)
+        _fivetran_synced: timestamp
+
+  - name: facebook_ads_ads
+    config:
+      column_types:
+        id: integer
+        ad_id: integer
+        ad_set_id: integer
+        date: date
+        name: varchar
+        status: varchar
+        impressions: integer
+        clicks: integer
+        spend: numeric(12, 2)
+        conversions: integer
+        _fivetran_synced: timestamp
+
+  - name: prod_customers
+    config:
+      column_types:
+        id: integer
+        first_name: varchar
+        last_name: varchar
+        email: varchar
+        country_code: varchar(2)
+        created_at: date
+        _fivetran_synced: timestamp
+
+  - name: prod_products
+    config:
+      column_types:
+        id: integer
+        name: varchar
+        category: varchar
+        price: numeric(12, 2)
+        unit_cost: numeric(12, 2)
+        currency_code: varchar(3)
+        created_at: date
+        _fivetran_synced: timestamp
+
+  - name: prod_orders
+    config:
+      column_types:
+        id: integer
+        user_id: integer
+        order_date: date
+        status: varchar
+        currency_code: varchar(3)
+        # Empty for organic/direct orders -> must land as NULL.
+        gclid: varchar
+        _fivetran_synced: timestamp
+
+  - name: prod_order_items
+    config:
+      column_types:
+        id: integer
+        order_id: integer
+        product_id: integer
+        quantity: integer
+        unit_price: numeric(12, 2)
+        _fivetran_synced: timestamp
+
+  - name: prod_web_visits
+    config:
+      column_types:
+        id: integer
+        visited_at: timestamp
+        # Empty for anonymous visits -> must land as NULL, not 0.
+        customer_id: integer
+        # Empty for non-paid traffic -> must land as NULL.
+        gclid: varchar
+        landing_page: varchar
+        device_category: varchar
+        _fivetran_synced: timestamp

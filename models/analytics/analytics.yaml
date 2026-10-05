@@ -1,0 +1,323 @@
+models:
+  - name: agg_channel
+    description: >
+      Marketing spend, clicks and attributed revenue rolled up by channel, with
+      both a gross and a margin-aware net ROAS. The spend side is complete
+      across every platform; the revenue side is click-id based — see the
+      attribution note on the columns below.
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: channel_grouping
+        description: >
+          Channel from seeds/marketing_channel_taxonomy.csv, matched by regex
+          against the campaign name. Editable by a marketer with a CSV change
+          and `dbt seed` — no code change. Campaigns matching nothing fall
+          through to 'Other'.
+        tests:
+          - not_null
+      - name: spend
+        description: "Total spend in the reporting currency. Complete for every platform."
+        tests:
+          - positive_value
+      - name: attributed_orders
+        description: "{{ doc('gclid_attribution') }}"
+        tests:
+          - positive_value
+      - name: attributed_gross_revenue
+        description: "Attributed revenue before returns. {{ doc('reporting_currency') }}"
+        tests:
+          - positive_value
+      - name: attributed_cogs
+        description: "Cost of goods on attributed orders, charged on units kept."
+        tests:
+          - positive_value
+      - name: attributed_contribution_margin
+        description: "{{ doc('contribution_margin') }}"
+      - name: gross_roas
+        description: "{{ doc('gross_roas') }}"
+        tests:
+          - positive_value
+      - name: net_roas
+        description: "{{ doc('net_roas') }}"
+
+  - name: agg_customer_demographics
+    description: "Final customer data with full demographic information"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+
+  - name: agg_customer_lifetime_value
+    description: "Final customer data with full lifetime value information, including a simple 1/3/5-year value projection"
+    tests:
+      # Invariant worth more than a not_null: net lifetime value must always
+      # reconcile to gross minus refunds. If enrichment or the refund
+      # proration in fct_transactions ever drifts, this catches it.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "ABS(lifetime_value - (lifetime_gross_revenue - lifetime_refund_amount)) < 0.01"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: lifetime_gross_revenue
+        description: "Observed gross revenue before refunds. Never negative."
+        tests:
+          - positive_value
+      - name: avg_order_value
+        description: >
+          Net lifetime value divided by order count. Deliberately NOT
+          constrained to be positive: a customer who refunded everything they
+          bought has an average order value of approximately zero, and
+          slightly below it when their order was charged in a foreign currency
+          (the local-currency amount is rounded to 2dp, so converting it back
+          at the same rate cannot exactly recover the original). Forcing this
+          positive would hide a real accounting outcome.
+      - name: projected_value_5y
+        description: "Forward run-rate projection, floored at zero — see the model's note."
+        tests:
+          - positive_value
+
+  - name: agg_inventory
+    description: "Final product inventory information"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+
+  - name: agg_marketing
+    description: "Final marketing information"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: spend
+        tests:
+          - positive_value
+
+  - name: agg_products
+    description: "Final product pricing information, snapshotted daily for SCD Type 2 history"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: price
+        tests:
+          - positive_value
+
+  - name: agg_transactions
+    description: "Final transactional information"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: id
+
+  - name: dim_customers
+    description: "Customer-level information, 1 row per customer ID"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+          - dbt_utils.at_least_one
+
+  - name: dim_date
+    description: "A clean calendar for calculations"
+    columns:
+      - name: date
+        tests:
+          - not_null
+          - unique
+      - name: month_number
+        tests:
+          - range_check:
+              arguments:
+                min_value: 1
+                max_value: 12
+      - name: quarter
+        tests:
+          - range_check:
+              arguments:
+                min_value: 1
+                max_value: 4
+      - name: day_of_month
+        tests:
+          - range_check:
+              arguments:
+                min_value: 1
+                max_value: 31
+      - name: fiscal_quarter
+        tests:
+          - range_check:
+              arguments:
+                min_value: 1
+                max_value: 4
+
+  - name: dim_order_items
+    description: "Order item-level information, 1 row per order item ID"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_orders')
+                field: id
+      - name: product_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: id
+
+  - name: dim_orders
+    description: "Order-level information, 1 row per order ID"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: id
+      - name: status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['completed', 'refunded', 'cancelled']
+
+  - name: dim_products
+    description: "Product-level information, 1 row per product ID"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: price
+        tests:
+          - positive_value
+
+  - name: fct_marketing
+    description: "Marketing metrics, such as spend, clicks, impressions, etc, with channel classification"
+    columns:
+      - name: channel_grouping
+        tests:
+          - not_null
+      - name: impressions
+        tests:
+          - positive_value
+      - name: clicks
+        tests:
+          - positive_value
+      - name: spend
+        tests:
+          - positive_value
+      - name: ctr
+        tests:
+          - range_check:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+  - name: fct_sessions
+    description: "Session metrics, such as page views, visits, visit duration, etc"
+
+  - name: fct_transactions
+    description: >
+      One row per order item, for orders where money actually moved. Cancelled
+      orders are excluded here (they never produced a Stripe payment) but still
+      appear in dim_orders as a dimension. Refunds happen at order level in the
+      source and are prorated across line items by each item's share of the
+      order subtotal.
+    tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "net_revenue <= gross_revenue"
+      # Contribution can never exceed net revenue: cost of goods is a
+      # deduction, never a credit. Catches a sign error or a bad cost join.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "contribution_margin <= net_revenue + 0.0001"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: ">= 0"
+            column_name: refund_amount
+    columns:
+      - name: order_item_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: customer_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: id
+      - name: product_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: id
+      - name: order_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_orders')
+                field: id
+      - name: gross_revenue
+        description: "Line revenue before refunds. {{ doc('reporting_currency') }}"
+        tests:
+          - positive_value
+      - name: refund_amount
+        description: >
+          This line's share of the order's refund, prorated by its share of the
+          order subtotal and converted from the payment currency first.
+      - name: net_revenue
+        description: "Gross revenue less refunds. {{ doc('reporting_currency') }}"
+      - name: cogs
+        description: "Cost of goods, charged on units kept. {{ doc('contribution_margin') }}"
+        tests:
+          - positive_value
+      - name: contribution_margin
+        description: "{{ doc('contribution_margin') }}"
+      - name: attributed_campaign_id
+        description: "{{ doc('gclid_attribution') }}"
+      - name: gross_cost
+        description: "Line cost of goods before any return credit: quantity x unit_cost."
+        tests:
+          - positive_value
+
+  - name: fct_visits
+    description: "Raw first-party web visit events, incrementally loaded, with Google Ads click attribution where a gclid is present"
+    columns:
+      - name: visit_id
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: id

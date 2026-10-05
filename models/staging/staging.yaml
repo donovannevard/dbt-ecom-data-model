@@ -1,0 +1,206 @@
+models:
+  - name: stg_stripe__payments
+    description: "Cleaned and renamed stripe payments data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: amount
+        tests:
+          - positive_value
+      - name: status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['succeeded', 'pending', 'failed']
+  - name: stg_stripe__refunds
+    description: "Cleaned and renamed stripe refunds data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: amount
+        tests:
+          - positive_value
+
+  - name: stg_facebook_ads__ads
+    description: "Cleaned and renamed facebook ad data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: impressions
+        tests:
+          - positive_value
+      - name: clicks
+        tests:
+          - positive_value
+      - name: spend
+        tests:
+          - positive_value
+  - name: stg_facebook_ads__ad_sets
+    description: "Cleaned and renamed facebook ad set data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+  - name: stg_facebook_ads__campaigns
+    description: "Cleaned and renamed facebook campaign data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_google_ads__clicks
+    description: "Cleaned and renamed google click data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: impressions
+        tests:
+          - positive_value
+      - name: clicks
+        tests:
+          - positive_value
+      - name: cost
+        tests:
+          - positive_value
+  - name: stg_google_ads__ads
+    description: "Cleaned and renamed google ad data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+  - name: stg_google_ads__ad_groups
+    description: "Cleaned and renamed google ad group data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+  - name: stg_google_ads__campaigns
+    description: "Cleaned and renamed google campaign data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: name
+        tests:
+          - unique_if_active:
+              arguments:
+                status_column: status
+                status_value: active
+      - name: campaign_type
+        tests:
+          - accepted_values_if_status:
+              arguments:
+                values: ['search', 'shopping', 'display']
+                status_column: status
+                status_value: active
+
+  - name: stg_google_analytics__sessions
+    description: "Cleaned and renamed Google Analytics 4 session data"
+    columns:
+      - name: session_id
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_exchange_rates
+    description: "Cleaned and renamed daily exchange rate data"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - date
+              - base_currency
+              - target_currency
+    columns:
+      - name: rate
+        description: >
+          Units of target_currency per one unit of base_currency on that date.
+          Snapshotted as SCD Type 2 so a rebuild reproduces historical figures
+          rather than restating them at today's rate.
+        tests:
+          - positive_value
+      - name: _loaded_at
+        description: "{{ doc('loaded_at') }}"
+
+  - name: stg_web_visits
+    description: "Cleaned and renamed first-party web visit events"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_customers
+    description: "Cleaned and renamed customer data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: email
+        tests:
+          - not_null
+  - name: stg_order_items
+    description: "Cleaned and renamed order items data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        tests:
+          - not_null
+      - name: quantity
+        tests:
+          - positive_value
+      - name: unit_price
+        tests:
+          - positive_value
+  - name: stg_orders
+    description: "Cleaned and renamed orders data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: user_id
+        tests:
+          - not_null
+      - name: status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['completed', 'refunded', 'cancelled']
+  - name: stg_products
+    description: "Cleaned and renamed product data"
+    columns:
+      - name: id
+        tests:
+          - not_null
+          - unique
+      - name: price
+        description: "List price in the catalogue currency, before any discount."
+        tests:
+          - positive_value
+      - name: unit_cost
+        description: >
+          What one unit costs us to buy or make, in the same currency as
+          price. Drives cost of goods in fct_transactions and therefore the
+          margin-aware net ROAS in agg_channel. A client whose product
+          catalogue has no cost column can null this out; the contribution
+          columns then read as zero rather than breaking the build.
+        tests:
+          - positive_value

@@ -1,0 +1,9 @@
+id,campaign_id,name,status,_fivetran_synced
+1,1,Google Brand Search - Ad Group 1,active,2025-12-14T00:24:00Z
+2,1,Google Brand Search - Ad Group 2,active,2025-12-14T23:28:00Z
+3,2,Google Non-Brand Search - Ad Group 1,active,2026-01-12T10:39:00Z
+4,2,Google Non-Brand Search - Ad Group 2,active,2026-01-12T08:21:00Z
+5,3,Google Shopping Feed - Ad Group 1,active,2026-05-07T14:44:00Z
+6,3,Google Shopping Feed - Ad Group 2,active,2026-05-07T07:25:00Z
+7,4,Google Banner Retargeting - Ad Group 1,active,2025-08-05T09:38:00Z
+8,4,Google Banner Retargeting - Ad Group 2,active,2025-08-05T03:41:00Z

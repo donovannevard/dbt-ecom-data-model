@@ -1,0 +1,221 @@
+name: dbt build
+
+"on":
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  DBT_PROFILES_DIR: .
+
+jobs:
+  # The whole project, end to end, on every push: seeds, snapshots, all 40
+  # models and all 128 tests, against DuckDB. No warehouse account, no
+  # secrets, so this runs on forks and pull requests from anyone — and the
+  # badge on the README means what it says.
+  #
+  # Production runs on Snowflake or Redshift. The only dialect-specific
+  # SQL is isolated in macros/regexp_contains.sql and macros/date_names.sql,
+  # both of which ship a snowflake__ implementation alongside the default.
+  build:
+    name: dbt build (DuckDB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dbt
+        run: pip install -r requirements.txt
+
+      - run: dbt deps
+
+      # Fast structural gate: catches YAML/Jinja/ref/source errors before
+      # spending time on a build.
+      - run: dbt parse
+
+      # Seeds load first and separately, on purpose. The demo dataset in
+      # seeds/example/** stands in for ELT-landed raw tables, and staging
+      # models reach it through source() rather than ref() — exactly as they
+      # would against a real warehouse. dbt therefore has no DAG edge from
+      # those seeds to the models that read them, so `dbt build` alone would
+      # race them on an empty database.
+      - run: dbt seed
+
+      - run: dbt build
+
+      # Second build exercises the incremental path in fct_visits, which the
+      # first (full-refresh) run does not.
+      - run: dbt build
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-target
+          path: target/
+          retention-days: 7
+
+  # Backs the three-warehouse claim without needing any warehouse account.
+  # Installs the Snowflake and Redshift adapters and parses the project against
+  # each production target, which resolves every dispatched macro and every
+  # config for that adapter. It does NOT execute SQL — see the warehouse
+  # support table in the README for what is and is not verified.
+  portability:
+    name: config parses on Snowflake + Redshift
+    runs-on: ubuntu-latest
+    env:
+      SNOWFLAKE_ACCOUNT: placeholder
+      SNOWFLAKE_TRANSFORM_ROLE: placeholder
+      SNOWFLAKE_TRANSFORM_WAREHOUSE: placeholder
+      DB_TRANSFORM_USER: placeholder
+      DB_TRANSFORM_PASSWORD: placeholder
+      DB_TRANSFORM_DATABASE: placeholder
+      REDSHIFT_HOST: placeholder
+      REDSHIFT_PORT: "5439"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dbt with all three adapters
+        run: pip install "dbt-duckdb==1.11.0" "dbt-snowflake==1.11.*" "dbt-redshift==1.11.*"
+
+      - run: dbt deps
+
+      - name: Parse against each target
+        run: |
+          for target in dev snowflake_prod redshift_prod; do
+            echo "::group::dbt parse --target $target"
+            dbt parse --target "$target" --no-partial-parse
+            echo "::endgroup::"
+          done
+
+      # Any deprecation warning fails this job, so the project does not quietly
+      # rot against newer dbt versions.
+      - name: Fail on deprecation warnings
+        # Folded scalar: the JSON argument contains ": ", which is not valid
+        # in a plain YAML scalar and silently breaks the whole workflow file.
+        run: >-
+          dbt parse --no-partial-parse
+          --warn-error-options '{"error": ["Deprecations"]}'
+
+  # Runs the whole pipeline through Dagster rather than through dbt directly,
+  # which is the production-shaped path: the orchestrator loads every dbt model
+  # as an asset and guarantees the raw landing tables are built before the
+  # models that read them — an ordering dbt's own DAG cannot express.
+  orchestration:
+    name: dagster materialize
+    runs-on: ubuntu-latest
+    env:
+      DAGSTER_HOME: /tmp/dagster
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dbt and Dagster
+        run: pip install -r requirements.txt -r requirements-orchestration.txt
+
+      - run: dbt deps
+
+      # Dagster builds its asset graph from the manifest at import time.
+      - run: dbt parse
+
+      - name: Asset graph loads and is wired correctly
+        run: |
+          python - <<'PYCHECK'
+          from orchestration.definitions import defs
+          keys = [k for a in defs.assets for k in a.keys]
+          raw = [k for k in keys if k.path[0] == "extract"]
+          assert len(raw) == 16, f"expected 16 raw landing assets, got {len(raw)}"
+          assert len(keys) > 60, f"expected the full dbt graph, got {len(keys)} assets"
+
+          # The edge dbt cannot express: a staging model must depend on the
+          # seeded raw table, not merely coexist with it.
+          deps = {
+              k: d
+              for a in defs.assets
+              for k, d in getattr(a, "asset_deps", {}).items()
+          }
+          stg_orders = [k for k in deps if k.path == ["stg_orders"]][0]
+          upstream = {".".join(d.path) for d in deps[stg_orders]}
+          assert "extract.prod_orders" in upstream, upstream
+
+          assert [s.cron_schedule for s in defs.schedules] == ["0 6 * * *"]
+          print(f"asset graph OK: {len(keys)} assets, {len(raw)} raw landing")
+          PYCHECK
+
+      - name: Materialize every asset
+        run: mkdir -p "$DAGSTER_HOME" && dagster asset materialize --select '*' -m orchestration.definitions
+
+  # Verifies the container path actually works, so "docker compose up" in the
+  # README is a tested claim rather than an aspiration. Builds the image, runs
+  # the full project inside it, and checks the docs server answers over HTTP.
+  docker:
+    name: docker compose up
+    runs-on: ubuntu-latest
+    env:
+      # Pinned explicitly rather than inheriting docker-compose.yml's default,
+      # so changing that default can never silently point these curl checks at
+      # a port nothing is listening on.
+      DBT_DOCS_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        run: docker compose build
+
+      # The whole pipeline inside the container, exactly as a reviewer's
+      # machine would run it.
+      - name: Build the project inside the container
+        run: docker compose run --rm cli sh -c "dbt seed && dbt build"
+
+      - name: Start the docs server
+        run: docker compose up -d
+
+      - name: Wait for the docs to answer
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://localhost:${DBT_DOCS_PORT}/; then
+              echo "docs responded after ${attempt} attempt(s)"
+              curl -fsS -o /dev/null http://localhost:${DBT_DOCS_PORT}/manifest.json
+              curl -fsS -o /dev/null http://localhost:${DBT_DOCS_PORT}/catalog.json
+              echo "manifest.json and catalog.json both served"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "docs server never became reachable"
+          docker compose logs --no-log-prefix
+          exit 1
+
+      - name: Container reports healthy
+        run: |
+          status=$(docker inspect --format '{{.State.Health.Status}}' dbt-ecom-data-model)
+          echo "health: $status"
+          test "$status" = "healthy"
+
+      # The orchestration stage shares the base layer, so this is cheap. It
+      # proves the compose profile and the Dagster image work, not just dbt's.
+      - name: Build and smoke-test the orchestration image
+        run: |
+          docker compose --profile orchestration build dagster
+          docker compose run --rm dagster sh -c \
+            "dbt parse -q && dagster asset materialize --select '*' -m orchestration.definitions"
+
+      - name: Stop
+        if: always()
+        run: docker compose --profile orchestration --profile tools down

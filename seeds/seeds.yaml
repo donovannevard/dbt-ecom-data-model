@@ -1,0 +1,67 @@
+version: 2
+
+seeds:
+  - name: bank_holidays
+    config:
+      column_types:
+        country_code: varchar(2)
+        market: varchar
+        holiday_date: date
+        holiday_name: varchar
+
+  - name: calendar
+    config:
+      column_types:
+        day: date
+        week: date
+        month: date
+        quarter: date
+        year: int
+
+  - name: country_codes
+    config:
+      column_types:
+        country_name: varchar
+        alpha_2: varchar(2)
+        alpha_3: varchar(3)
+        numeric: varchar(3)
+        region: varchar
+        sub_region: varchar
+        intermediate_region: varchar
+        currency_code: varchar(3)
+        timezone_name: varchar
+
+  - name: currency_info
+    config:
+      column_types:
+        currency_code: varchar(3)
+        currency_name: varchar
+        currency_symbol: varchar
+        decimal_places: int
+
+  - name: marketing_channel_taxonomy
+    config:
+      column_types:
+        campaign_name_pattern: varchar
+        channel: varchar
+        subchannel: varchar
+
+  - name: timezones
+    config:
+      column_types:
+        timezone_name: varchar
+        utc_offset: varchar
+        supports_dst: boolean
+        example_city: varchar
+
+  - name: uk_outward_postal_codes
+    config:
+      column_types:
+        outward_code: varchar
+        latitude: float
+        longitude: float
+        town: varchar
+        region: varchar
+        uk_region: varchar
+        country: varchar
+        country_string: varchar

@@ -1,0 +1,5 @@
+id,name,status,campaign_type,start_date,end_date,_fivetran_synced
+1,Google Brand Search,active,search,2025-10-23,2025-12-14,2025-12-14T05:24:00Z
+2,Google Non-Brand Search,active,search,2025-10-04,2026-01-12,2026-01-12T02:42:00Z
+3,Google Shopping Feed,active,shopping,2026-03-09,2026-05-07,2026-05-07T18:13:00Z
+4,Google Banner Retargeting,active,display,2025-06-12,2025-08-05,2025-08-05T01:10:00Z

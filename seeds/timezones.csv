@@ -1,0 +1,27 @@
+timezone_name,utc_offset,supports_dst,example_city
+Pacific/Midway,-11:00,FALSE,Midway Atoll
+Pacific/Honolulu,-10:00,FALSE,Honolulu
+America/Anchorage,-09:00,TRUE,Anchorage
+America/Los_Angeles,-08:00,TRUE,Los Angeles
+America/Denver,-07:00,TRUE,Denver
+America/Chicago,-06:00,TRUE,Chicago
+America/New_York,-05:00,TRUE,New York
+America/Halifax,-04:00,TRUE,Halifax
+America/St_Johns,-03:30,TRUE,St. John's
+America/Sao_Paulo,-03:00,TRUE,São Paulo
+Atlantic/Azores,-01:00,TRUE,Ponta Delgada
+Europe/London,+00:00,TRUE,London
+Europe/Paris,+01:00,TRUE,Paris
+Europe/Berlin,+01:00,TRUE,Berlin
+Europe/Helsinki,+02:00,TRUE,Helsinki
+Europe/Moscow,+03:00,FALSE,Moscow
+Asia/Dubai,+04:00,FALSE,Dubai
+Asia/Kabul,+04:30,FALSE,Kabul
+Asia/Karachi,+05:00,FALSE,Karachi
+Asia/Kolkata,+05:30,FALSE,New Delhi
+Asia/Dhaka,+06:00,FALSE,Dhaka
+Asia/Bangkok,+07:00,FALSE,Bangkok
+Asia/Shanghai,+08:00,FALSE,Shanghai
+Asia/Tokyo,+09:00,FALSE,Tokyo
+Australia/Sydney,+10:00,TRUE,Sydney
+Pacific/Auckland,+12:00,TRUE,Auckland
