@@ -202,11 +202,29 @@ jobs:
           docker compose logs --no-log-prefix
           exit 1
 
+      # Polls rather than asserting once. The container's HEALTHCHECK has a
+      # 120s start-period and a 30s interval, so Docker reports "starting"
+      # until its first check fires -- which is after the docs have already
+      # begun answering. Asserting immediately is a race that passes or fails
+      # on timing alone.
       - name: Container reports healthy
         run: |
-          status=$(docker inspect --format '{{.State.Health.Status}}' dbt-ecom-data-model)
-          echo "health: $status"
-          test "$status" = "healthy"
+          for _ in $(seq 1 30); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' dbt-ecom-data-model)
+            echo "health: $status"
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              echo "container reported unhealthy"
+              docker compose logs --no-log-prefix
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "container never reached healthy within 300s"
+          docker compose logs --no-log-prefix
+          exit 1
 
       # The orchestration stage shares the base layer, so this is cheap. It
       # proves the compose profile and the Dagster image work, not just dbt's.
