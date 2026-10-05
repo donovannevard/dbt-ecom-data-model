@@ -6,6 +6,8 @@ A production-shaped dbt project for e-commerce revenue, marketing spend and attr
 
 Builds on **DuckDB** with no credentials, targets **Snowflake** or **Redshift** in production through dispatched macros, and ships **optional orchestration** — Dagster built in, or drop it into your own Airflow — because dbt has no scheduler and `dbt docs` is a catalogue, not a control plane. The [warehouse support table](#warehouse-support) is explicit about which of those is actually executed in CI and which is not.
 
+**Companion repo:** the Snowflake and Redshift warehouses this project was verified on were provisioned with [data-infrastructure-deployment](https://github.com/donovannevard/data-infrastructure-deployment): one `terraform apply` for the warehouse, least-privilege RBAC, Fivetran and Airflow. Together they cover the pipeline from infrastructure to modelled data.
+
 **It actually runs.** No warehouse account, no credentials, no signup:
 
 ```bash
@@ -449,7 +451,7 @@ Keeping `source()` rather than pointing staging at `ref()` is the right trade: t
 | `snowflake_prod` / `snowflake_dev` | Snowflake | Production | **Fully executed**, 2026-10-05 |
 | `redshift_prod` / `redshift_dev` | Redshift | Production | **Fully executed**, 2026-10-05 |
 
-All three have been run end to end — full build, all 128 tests, the incremental merge path on a second run — and their output reconciled against each other:
+All three have been run end to end — full build, all 128 tests, the incremental merge path on a second run — and their output reconciled against each other. The Snowflake and Redshift runs used warehouses deployed by [data-infrastructure-deployment](https://github.com/donovannevard/data-infrastructure-deployment):
 
 | | DuckDB | Snowflake | Redshift |
 |---|---|---|---|
