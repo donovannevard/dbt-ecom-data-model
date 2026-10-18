@@ -1,0 +1,67 @@
+version: 2
+
+seeds:
+  - name: bank_holidays
+    config:
+      column_types:
+        country_code: "{{ 'string' if target.type == 'bigquery' else 'varchar(2)' }}"
+        market: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        holiday_date: date
+        holiday_name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+
+  - name: calendar
+    config:
+      column_types:
+        day: date
+        week: date
+        month: date
+        quarter: date
+        year: integer
+
+  - name: country_codes
+    config:
+      column_types:
+        country_name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        alpha_2: "{{ 'string' if target.type == 'bigquery' else 'varchar(2)' }}"
+        alpha_3: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        numeric: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        region: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        sub_region: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        intermediate_region: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        currency_code: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        timezone_name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+
+  - name: currency_info
+    config:
+      column_types:
+        currency_code: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        currency_name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        currency_symbol: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        decimal_places: integer
+
+  - name: marketing_channel_taxonomy
+    config:
+      column_types:
+        campaign_name_pattern: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        channel: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        subchannel: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+
+  - name: timezones
+    config:
+      column_types:
+        timezone_name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        utc_offset: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        supports_dst: boolean
+        example_city: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+
+  - name: uk_outward_postal_codes
+    config:
+      column_types:
+        outward_code: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        latitude: float
+        longitude: float
+        town: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        region: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        uk_region: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        country: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        country_string: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"

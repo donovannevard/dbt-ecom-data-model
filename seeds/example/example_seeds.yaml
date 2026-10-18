@@ -1,0 +1,212 @@
+version: 2
+
+# Explicit column types for the demo dataset.
+#
+# These CSVs stand in for ELT-landed raw tables, and without declared types
+# each adapter applies its own CSV inference: DuckDB sniffs the file, Redshift
+# and Snowflake do not sniff it the same way, and a column that lands as
+# INTEGER on one warehouse and VARCHAR on another changes what the staging
+# layer's casts and NULL handling actually do. Declaring them here is what
+# makes "runs on DuckDB, Snowflake or Redshift" a real claim rather than a
+# hopeful one.
+#
+# Types are the portable subset: integer, date, timestamp and numeric(p,s) are
+# spelled identically everywhere. Strings are not — BigQuery has no VARCHAR and
+# its STRING takes no length — hence the inline conditional on target.type.
+#
+# NUMERIC gets the same treatment, for a different reason: dbt-bigquery maps
+# these values onto BigQuery's API field-type vocabulary, which has no
+# parameterised types at all. BigQuery's NUMERIC is fixed at (38, 9), which is
+# more precise than the (12, 2) asked for elsewhere, so no precision is lost.
+# For the same reason `int` is spelled `integer` throughout -- INT is not in
+# that vocabulary either, while INTEGER is and works on all four adapters.
+#
+# It is written out in full rather than hidden behind a macro or a var because
+# dbt renders property YAML with a restricted Jinja context: `target` and
+# `var()` work, project macros do not, and Jinja stored *inside* a var is not
+# re-rendered here (it arrives as literal text and lands in the DDL).
+#
+# Note the two nullable columns that matter: prod_web_visits.customer_id
+# (anonymous visits have no customer) and the gclid columns (organic traffic
+# has no click id). Both are empty strings in the CSV and must land as NULL,
+# not as a zero or an empty string, or attribution coverage silently changes.
+
+seeds:
+  - name: exchange_rates
+    config:
+      column_types:
+        date: date
+        base_currency: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        target_currency: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        rate: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 6)' }}"
+        _fivetran_synced: timestamp
+
+  - name: google_analytics_sessions
+    config:
+      column_types:
+        id: integer
+        session_date: date
+        source: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        medium: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        campaign: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        device_category: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        pageviews: integer
+        session_duration_seconds: integer
+        _fivetran_synced: timestamp
+
+  - name: stripe_payments
+    config:
+      column_types:
+        id: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        order_id: integer
+        amount: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 2)' }}"
+        currency: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        status: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        created_at: date
+        _fivetran_synced: timestamp
+
+  - name: stripe_refunds
+    config:
+      column_types:
+        id: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        payment_id: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        amount: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 2)' }}"
+        reason: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        created_at: date
+        _fivetran_synced: timestamp
+
+  - name: google_ads_campaigns
+    config:
+      column_types:
+        id: integer
+        name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        status: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        campaign_type: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        start_date: date
+        end_date: date
+        _fivetran_synced: timestamp
+
+  - name: google_ads_ad_groups
+    config:
+      column_types:
+        id: integer
+        campaign_id: integer
+        name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        status: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        _fivetran_synced: timestamp
+
+  - name: google_ads_ads
+    config:
+      column_types:
+        id: integer
+        ad_group_id: integer
+        headline: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        status: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        ad_type: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        _fivetran_synced: timestamp
+
+  - name: google_ads_clicks
+    config:
+      column_types:
+        id: integer
+        ad_id: integer
+        date: date
+        impressions: integer
+        clicks: integer
+        cost: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 2)' }}"
+        conversions: integer
+        _fivetran_synced: timestamp
+
+  - name: facebook_ads_campaigns
+    config:
+      column_types:
+        id: integer
+        name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        objective: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        status: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        start_date: date
+        end_date: date
+        _fivetran_synced: timestamp
+
+  - name: facebook_ads_ad_sets
+    config:
+      column_types:
+        id: integer
+        campaign_id: integer
+        name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        status: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        daily_budget: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 2)' }}"
+        _fivetran_synced: timestamp
+
+  - name: facebook_ads_ads
+    config:
+      column_types:
+        id: integer
+        ad_id: integer
+        ad_set_id: integer
+        date: date
+        name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        status: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        impressions: integer
+        clicks: integer
+        spend: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 2)' }}"
+        conversions: integer
+        _fivetran_synced: timestamp
+
+  - name: prod_customers
+    config:
+      column_types:
+        id: integer
+        first_name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        last_name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        email: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        country_code: "{{ 'string' if target.type == 'bigquery' else 'varchar(2)' }}"
+        created_at: date
+        _fivetran_synced: timestamp
+
+  - name: prod_products
+    config:
+      column_types:
+        id: integer
+        name: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        category: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        price: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 2)' }}"
+        unit_cost: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 2)' }}"
+        currency_code: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        created_at: date
+        _fivetran_synced: timestamp
+
+  - name: prod_orders
+    config:
+      column_types:
+        id: integer
+        user_id: integer
+        order_date: date
+        status: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        currency_code: "{{ 'string' if target.type == 'bigquery' else 'varchar(3)' }}"
+        # Empty for organic/direct orders -> must land as NULL.
+        gclid: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        _fivetran_synced: timestamp
+
+  - name: prod_order_items
+    config:
+      column_types:
+        id: integer
+        order_id: integer
+        product_id: integer
+        quantity: integer
+        unit_price: "{{ 'numeric' if target.type == 'bigquery' else 'numeric(12, 2)' }}"
+        _fivetran_synced: timestamp
+
+  - name: prod_web_visits
+    config:
+      column_types:
+        id: integer
+        visited_at: timestamp
+        # Empty for anonymous visits -> must land as NULL, not 0.
+        customer_id: integer
+        # Empty for non-paid traffic -> must land as NULL.
+        gclid: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        landing_page: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        device_category: "{{ 'string' if target.type == 'bigquery' else 'varchar' }}"
+        _fivetran_synced: timestamp

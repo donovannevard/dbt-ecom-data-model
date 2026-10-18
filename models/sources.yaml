@@ -1,0 +1,33 @@
+version: 2
+
+sources:
+  - name: extract
+    schema: extract
+    config:
+      loaded_at_field: _fivetran_synced
+      freshness:
+        warn_after: { count: 24, period: hour }
+        error_after: { count: 48, period: hour }
+    tables:
+      - name: exchange_rates
+      - name: google_analytics_sessions
+      - name: stripe_payments
+      - name: stripe_refunds
+      - name: google_ads_campaigns
+      - name: google_ads_ad_groups
+      - name: google_ads_ads
+      - name: google_ads_clicks
+      - name: facebook_ads_campaigns
+      - name: facebook_ads_ad_sets
+      - name: facebook_ads_ads
+      - name: prod_customers
+      - name: prod_orders
+      - name: prod_order_items
+      - name: prod_products
+      - name: prod_web_visits
+        # a raw, ever-growing event log — should land far more often than
+        # the batch-style sources above
+        config:
+          freshness:
+            warn_after: { count: 2, period: hour }
+            error_after: { count: 6, period: hour }

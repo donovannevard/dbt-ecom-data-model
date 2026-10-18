@@ -1,0 +1,10 @@
+# Orchestration layer, kept separate from requirements.txt on purpose.
+#
+# dbt is the transformation tool; it has no scheduler. These packages add the
+# orchestrator that invokes it. Building and exploring the dbt project needs
+# none of them, so a plain clone stays a two-package install.
+#
+#   pip install -r requirements.txt -r requirements-orchestration.txt
+dagster==1.13.25
+dagster-dbt==0.29.25
+dagster-webserver==1.13.25

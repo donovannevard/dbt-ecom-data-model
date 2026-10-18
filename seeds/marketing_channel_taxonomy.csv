@@ -1,0 +1,15 @@
+campaign_name_pattern,channel,subchannel
+google-brand,Brand,Brand > Google
+google-non-brand,Non Brand,Non Brand > Google
+google.*(shopping|cse|pla),Shopping,Shopping > Google
+bing-non-brand,Non Brand,Non Brand > Bing
+google-organic,Organic,Organic > Search
+facebook-(cpc|organic),Social,Social > Facebook
+instagram-(cpc|organic),Social,Social > Instagram
+(gdn|display|banner),Display,Display > Other
+affiliate.*partner,Affiliates,Affiliates > Partners
+(affiliate|cj).*impact,Affiliates,Affiliates > Impacts
+email,Organic,Organic > Email
+newsletter,Organic,Organic > Newsletter
+referral,Organic,Organic > Referral
+leadgen|lead_generation,Lead Generation,Lead Generation > Other

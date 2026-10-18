@@ -1,0 +1,7 @@
+id,campaign_id,name,status,daily_budget,_fivetran_synced
+1,1,Facebook Cpc Retargeting - Ad Set 1,active,60.11,2026-04-17T00:02:00Z
+2,1,Facebook Cpc Retargeting - Ad Set 2,active,26.42,2026-04-17T04:50:00Z
+3,2,Facebook Cpc Lookalike Prospecting - Ad Set 1,active,36.68,2026-03-19T04:50:00Z
+4,2,Facebook Cpc Lookalike Prospecting - Ad Set 2,active,42.74,2026-03-19T21:16:00Z
+5,3,Facebook Leadgen Campaign - Ad Set 1,active,42.94,2026-06-30T09:43:00Z
+6,3,Facebook Leadgen Campaign - Ad Set 2,active,24.81,2026-06-30T02:30:00Z
