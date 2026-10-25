@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "model": "deterministic remediation (Phase 5 demo)",
+  "served_by": "deterministic remediation (Phase 5 demo)",
+  "cost_usd": 0,
+  "error": null,
+  "warnings": [],
+  "diagnosis": {
+    "verdict": "code_fix",
+    "root_cause": "agg_marketing builds its surrogate key from campaign_id alone, so Google and Facebook campaigns with the same numeric id collide. The key must be platform-qualified, as the model's header comment says. Adding a range test on ctr as well, to guard the rollup's ratio.",
+    "evidence": [
+      "unique_agg_marketing_id fails with three duplicated ids, each shared by one Google Ads and one Facebook Ads campaign.",
+      "generate_surrogate_key(['campaign_id']) omits platform; the model groups by platform, campaign_id."
+    ],
+    "confidence": 0.9,
+    "edits": [
+      {
+        "path": "models/analytics/agg_marketing.sql",
+        "old": "generate_surrogate_key(['campaign_id'])",
+        "new": "generate_surrogate_key(['platform', 'campaign_id'])"
+      },
+      {
+        "path": "models/analytics/analytics.yaml",
+        "old": "      - name: spend\n        tests:\n          - positive_value\n\n  - name: agg_products",
+        "new": "      - name: spend\n        tests:\n          - positive_value\n      - name: ctr\n        tests:\n          - range_check:\n              min_value: 0\n              max_value: 1\n\n  - name: agg_products"
+      }
+    ],
+    "upstream_action": "",
+    "self_assessed_risk": "low",
+    "risk_rationale": "A key change on a leaf rollup, plus a new test."
+  },
+  "_demo_note": "Stands in for a deterministic fix (no model involved), deliberately flawed: the SQL fix is right, but the new range_check test uses the old argument syntax (no `arguments:` key). That passes the Phase 3 validator (dbt parse succeeds; adding tests is allowed) and fails CI's deprecation gate. Because no model wrote it, Claude gets one attempt to recover from the CI output; if Claude's attempt fails CI too, the loop stops. Since the demo (2026-10-23) the validator parses with deprecations as errors too, so this attempt is now rejected before any branch exists; to re-run the CI-failure demo, use a flaw the validator still can't see."
+}

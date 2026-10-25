@@ -2,6 +2,11 @@
 # no credentials. This is the only install needed to build the project.
 dbt-core==1.12.5
 dbt-duckdb==1.11.0
+# DuckDB itself, pinned too: dbt-duckdb accepts any version, so CI silently
+# picked up 2.0.0 while every local tool here (and the 1.5.x CLI the docs
+# suggest) runs 1.5. A database file has to open in the same version that
+# wrote it, and behaviour differs across the major version.
+duckdb==1.5.6
 
 # Production adapters. Uncomment the one you deploy to and build with the
 # matching target, e.g. `dbt build --target snowflake_prod`,

@@ -22,3 +22,6 @@ __pycache__/
 
 # Docs are generated inside the container, never copied in.
 docs/*.html
+.chaos
+.remediation-cache
+.remediation-github

@@ -2,7 +2,7 @@
 
 [![dbt build](https://github.com/donovannevard/dbt-ecom-data-model/actions/workflows/dbt_ci.yml/badge.svg)](https://github.com/donovannevard/dbt-ecom-data-model/actions/workflows/dbt_ci.yml)
 
-A production-shaped dbt project for e-commerce revenue, marketing spend and attribution: 40 models across `staging` → `intermediate` → `analytics`, 130 tests, SCD Type 2 snapshots, and a synthetic dataset that makes the whole thing run on your laptop in about ten seconds.
+A production-shaped dbt project for e-commerce revenue, marketing spend and attribution: 40 models across `staging` → `intermediate` → `analytics`, 162 tests, SCD Type 2 snapshots, and a synthetic dataset that makes the whole thing run on your laptop in about ten seconds.
 
 Builds on **DuckDB** with no credentials, targets **Snowflake**, **Redshift** or **BigQuery** in production through dispatched macros, and ships **optional orchestration** — Dagster built in, or drop it into your own Airflow — because dbt has no scheduler and `dbt docs` is a catalogue, not a control plane. The [warehouse support table](#warehouse-support) is explicit about which of those is actually executed in CI and which is not.
 
@@ -16,7 +16,7 @@ cd dbt-ecom-data-model
 make up
 ```
 
-`make up` creates a virtualenv, installs dbt-duckdb, and builds 23 seeds, 40 models, 2 snapshots and 130 tests into a local DuckDB file — about ten seconds, and the same thing CI runs on every push. `make` on its own lists every target.
+`make up` creates a virtualenv, installs dbt-duckdb, and builds 23 seeds, 40 models, 2 snapshots and 162 tests into a local DuckDB file — about ten seconds, and the same thing CI runs on every push. `make` on its own lists every target.
 
 Prefer to drive it yourself:
 
@@ -32,7 +32,7 @@ dbt deps && dbt seed && dbt build
 docker compose up        # or: make docker-up
 ```
 
-That builds the project inside the container, runs all 130 tests, and serves the documentation at **http://localhost:8080** — lineage graph, every model, every column description. CI runs this same path on every push, so it is a tested claim.
+That builds the project inside the container, runs all 162 tests, and serves the documentation at **http://localhost:8080** — lineage graph, every model, every column description. CI runs this same path on every push, so it is a tested claim.
 
 To see it as a scheduled pipeline rather than a documentation site:
 
@@ -193,6 +193,14 @@ describe main.fct_transactions;
 select * from extract.prod_orders limit 5;
 ```
 
+**Or browse it in the DuckDB UI.** A notebook-style SQL editor and table browser in your browser:
+
+```bash
+make duckdb-ui          # http://localhost:4213
+```
+
+It attaches a copy of `dev.duckdb` taken at launch, so it never holds a lock on the file dbt writes to; run it again after a build to refresh. Databases from [fault-injection runs](docs/ai-remediation.md#walking-through-a-scenario) appear alongside it, named per scenario, until `make chaos-clean`.
+
 **Poke at the pipeline itself.** This is where dbt's graph selection earns its keep:
 
 ```bash
@@ -231,7 +239,7 @@ The container path exists so that "it runs on my machine" is never the answer. A
 docker compose up          # or: make docker-up
 ```
 
-Then open **http://localhost:8080**. The container seeds, builds every model and snapshot, runs all 130 tests, generates the docs and serves them — roughly 25 seconds on a warm image. With `-d` you will not see the startup banner, so give it that long before expecting a response; the docs server starts *after* the build finishes.
+Then open **http://localhost:8080**. The container seeds, builds every model and snapshot, runs all 162 tests, generates the docs and serves them — roughly 25 seconds on a warm image. With `-d` you will not see the startup banner, so give it that long before expecting a response; the docs server starts *after* the build finishes.
 
 The host port is configurable, for when 8080 is already taken (another project's Airflow, say):
 
@@ -311,7 +319,7 @@ raw_landing_tables  (16 assets, = dbt's source keys)
 
 ### Tests become asset checks
 
-dbt tests are picked up automatically as Dagster **asset checks**, so all 128 of them appear against the asset they guard rather than as a wall of CLI output. A failing `relationships` test shows as a failed check on that specific model, which is the difference between "the build failed" and "`fct_transactions` has orphaned `customer_id` values".
+dbt tests are picked up automatically as Dagster **asset checks**, so all 130 model and snapshot tests appear against the asset they guard rather than as a wall of CLI output. The 32 duplicate checks on raw source tables are the exception: those tables are materialised by the seed asset rather than by dbt, so dagster-dbt has no dbt asset to attach them to. They still run in every `dbt build`. A failing `relationships` test shows as a failed check on that specific model, which is the difference between "the build failed" and "`fct_transactions` has orphaned `customer_id` values".
 
 ### The schedule
 
@@ -361,6 +369,32 @@ None of that is an argument that Dagster is the right choice for a client who al
 ### What a real deployment would change
 
 `dagster dev` runs the webserver and daemon in one process, which is right for local use and for a demo, and wrong for production. A real deployment runs `dagster-webserver` and `dagster-daemon` as separate long-lived services against Postgres rather than the local SQLite instance, and executes runs in containers (`k8s_job_executor` or ECS) rather than as subprocesses. The asset definitions themselves do not change.
+
+## AI remediation (in progress)
+
+An agentic loop that turns a failing dbt test into a reviewed fix. A diagnostic bundle goes to Claude, the proposed patch is validated by code, then a branch, a PR and CI follow. Low-risk models auto-merge, and anything touching revenue or customers waits for a human. Full design: [`docs/ai-remediation.md`](docs/ai-remediation.md).
+
+Built so far (Phases 0–4; until the repo is pushed, GitHub is a local stand-in):
+
+- **Risk tiers from lineage.** [`remediation/risk.py`](remediation/risk.py) gives a change the strictest tier of everything downstream of it. Only 5 of 40 models qualify for auto-merge, because almost everything eventually feeds revenue. The same tiers generate [`.github/CODEOWNERS`](.github/CODEOWNERS), so GitHub enforces the quarantine rather than the agent.
+- **Fault injection.** Ten scenarios in [`remediation/scenarios/`](remediation/scenarios/) break the project the way production breaks: re-delivered payments, a flipped refund sign, a surrogate key that drops its platform. Each runs in its own workspace with clean and broken DuckDB snapshots to compare, and the run checks that the scenario still causes the failure it claims to.
+- **Diagnostic bundles.** Failing rows, test definitions, upstream SQL and the fix's risk tier, with PII redacted before anything leaves the machine.
+- **Claude diagnosis, read-only.** One structured-output call per failure returns a verdict (code fix, data issue or needs a human), evidence, a calibrated confidence and exact-match edits. Each diagnosis is scored against what the scenario actually broke.
+- **Quarantine alerts.** Every source table with conflicting records gets one issue holding the versions, the downstream models missing them and a runbook. The next build refreshes it, and once the conflict is fixed at source it closes itself. It runs automatically after Dagster's scheduled build.
+- **Branches, PRs and issues.** A validated fix becomes a bot-authored branch and a PR labelled by risk route, with quarantined PRs assigned to the code owner. A data issue or a needs-human verdict becomes an issue. A failure that recurs comments on its open PR rather than paying for a second diagnosis.
+- **A validator between Claude and any branch.** Every patch is rebuilt with the fault still present, and rejected if it touches a protected path, weakens or removes any existing test, or changes a risk tier. Those last two are found by comparing manifests, not by diffing YAML. Patches that pass are routed: lineage decides the tier, and low confidence or a fix that drops rows sends it to a human. A red-team suite of 13 crafted bad patches runs in CI.
+
+```bash
+make chaos SCENARIO=refund_sign_flip           # break it and build it
+make chaos-ui SCENARIO=refund_sign_flip        # clean vs broken, side by side in DuckDB
+make chaos-diagnose SCENARIO=refund_sign_flip  # Claude's diagnosis (uses API credits)
+make chaos-fix SCENARIO=refund_sign_flip       # validate its fix (Phase 3)
+make validator-redteam                         # crafted bad patches vs the validator
+make chaos-pr SCENARIO=refund_sign_flip        # the PR it would open, in a sandbox repo
+make quarantine                                # anything held out of staging, and why
+make risk FILES="macros/week_bounds.sql"
+make remediation-test
+```
 
 ## Design decisions
 
@@ -418,17 +452,30 @@ The consequence is deliberate: **environments separate by database, not by schem
 
 ### Testing
 
-130 tests, placed where they earn their keep rather than sprayed across every column:
+162 tests, placed where they earn their keep rather than sprayed across every column:
 
 - `relationships` on every fact-to-dimension foreign key — the tests that catch a broken join before a dashboard does
 - `accepted_values` on status and category columns, where an unexpected value means an upstream schema change
 - Five custom generic tests in `tests/generic/`: `positive_value`, `range_check`, `not_null_if_active`, `unique_if_active`, `accepted_values_if_status`. The conditional ones exist because real constraints are conditional — a campaign name must be unique among *active* campaigns, but may legitimately be reused after the original is archived
 - `dbt_utils` `expression_is_true`, `unique_combination_of_columns` and `at_least_one` for grain and invariant checks
 - Source freshness thresholds on `models/sources.yaml`, tighter for the raw event log than for batch-loaded sources
+- Two warn-severity duplicate checks on every raw source table, explained below
 
 - `expression_is_true` invariants on the things that must hold by construction: `net_revenue <= gross_revenue`, `contribution_margin <= net_revenue`, and lifetime value reconciling to gross minus refunds. The contribution one earned its place immediately — it caught a negative cost of goods arising from an FX-rounding edge case on fully refunded foreign-currency orders
 
 `store_failures` is on, so a failing test leaves the offending rows in the warehouse to inspect rather than just a count.
+
+### Duplicates are absorbed; conflicts are quarantined
+
+ELT tools re-deliver rows. Every staging model reads its source through [`deduplicate_source()`](macros/deduplicate_source.sql) rather than a bare `SELECT *`, and handles each key deterministically:
+
+| What arrived | What staging does | What you hear about |
+|---|---|---|
+| Identical copies of a record | Collapses them to one row; nothing is lost | A `warn` on the source's duplicate-key check, so the upstream team can fix their sync |
+| Two versions of a record that disagree | Excludes the key entirely: no rule can say which version is true, so neither reaches revenue | A `warn` from `no_conflicting_duplicates`, whose stored failures are the **quarantine table** holding both versions |
+| A null key | Passes it through untouched | The staging `not_null` test fails, loudly |
+
+Neither kind of duplicate stops the build. Halting every downstream model over one re-delivered row is out of proportion, but quietly picking one of two conflicting payments would be worse. "Version" compares every column except load metadata (`_fivetran_synced`), which legitimately differs between copies. The macro is written to be portable (derived tables rather than nested `WITH`, `GROUP BY` rather than `COUNT(DISTINCT) OVER`), and has been executed on all four warehouses.
 
 ### Documentation lives next to the definition, once
 
@@ -448,12 +495,21 @@ Keeping `source()` rather than pointing staging at `ref()` is the right trade: t
 |---|---|---|---|
 | `dev` *(default)* | DuckDB | Local dev, exploration, CI | **Fully executed.** Every model, snapshot and test runs on every push |
 | `ci` | DuckDB | GitHub Actions | **Fully executed** |
-| `snowflake_prod` / `snowflake_dev` | Snowflake | Production | **Fully executed**, 2026-10-05 |
-| `redshift_prod` / `redshift_dev` | Redshift | Production | **Fully executed**, 2026-10-05 |
-| `bigquery_prod` / `bigquery_dev` | BigQuery | Production | **Fully executed**, 2026-10-18 |
-| `bigquery_local` | BigQuery | Local verification | OAuth via `gcloud` ADC — no key file |
+| `snowflake_prod` / `snowflake_dev` | Snowflake | Production | **Fully executed**, 2026-10-25: full build, all 162 tests and all 11 remediation scenarios |
+| `redshift_prod` / `redshift_dev` | Redshift | Production | **Fully executed**, 2026-10-25: full build, all 162 tests, the incremental merge and all 11 remediation scenarios |
+| `bigquery_prod` / `bigquery_dev` | BigQuery | Production | **Fully executed**, 2026-10-18 (service-account auth) |
+| `bigquery_local` | BigQuery | Local verification | **Fully executed**, 2026-10-25: full build, all 162 tests, the incremental merge and all 11 remediation scenarios. OAuth via `gcloud` ADC, no key file |
 
-**All four have been run end to end** — full build, all 130 tests, and the incremental merge path on a second run — with their output reconciled against each other. The Snowflake and Redshift runs used warehouses deployed by [data-infrastructure-deployment](https://github.com/donovannevard/data-infrastructure-deployment):
+**All four run end to end.** Every warehouse has run the full build with every test, including the duplicate handling (`deduplicate_source()` in every staging model and the 32 source duplicate checks). The incremental merge path ran on a second build: on DuckDB, BigQuery and Redshift in this round, and on Snowflake on 2026-10-05.
+
+**The AI remediation layer was verified on each warehouse too** (2026-10-25). All 11 fault-injection scenarios behaved as designed on every warehouse. Claude diagnosed all 8 failing scenarios correctly on each, and all 5 of its code fixes were rebuilt and validated on that warehouse, for 24 of 24 diagnoses and 15 of 15 validated fixes in total. See [`docs/ai-remediation.md`](docs/ai-remediation.md#on-a-cloud-warehouse).
+
+That round found two warehouse-specific bugs, both now fixed:
+
+- **Redshift's `connect_timeout` caps every query, not just connecting.** dbt-redshift passes it as the driver's socket timeout, so the old setting of 10 seconds failed the four heaviest models with "The read operation timed out". It's now 600, with an explanation in `profiles.yml`.
+- **Snowflake returns unquoted column names upper-cased** (`ID`, not `id`), which broke the quarantine alert's key detection. Lookups are now case-insensitive, and the alert was verified against real Snowflake output.
+
+The output reconciliation below dates from the 2026-10-05 and 2026-10-18 runs. The Snowflake and Redshift warehouses for every run were deployed by [data-infrastructure-deployment](https://github.com/donovannevard/data-infrastructure-deployment):
 
 | | DuckDB | Snowflake | Redshift | BigQuery |
 |---|---|---|---|---|
@@ -595,10 +651,32 @@ macros/
 └── *.sql                    # Business macros: safe_divide, parse_gclid_ad_id, …
 docs/
 ├── doc_blocks.md     # Shared column definitions, referenced via {{ doc() }}
+├── ai-remediation.md # Design and runbook for the remediation layer
 └── warehouse-verification.md  # Procedure for testing on real Snowflake/Redshift
 tests/generic/        # Five custom generic tests
 analysis/             # Three worked analyses, compiled but never materialised
 scripts/              # generate_example_seeds.py — deterministic
+remediation/          # AI remediation layer — see docs/ai-remediation.md
+├── policy.yaml       #   Tiers, protected paths, PII columns, CI-failure limit
+├── risk.py           #   Lineage-based risk tier; generates .github/CODEOWNERS
+├── scenarios/        #   Fault-injection library: data faults and code faults
+├── inject.py         #   Applies a scenario to a scratch copy, never the checkout
+├── diagnose.py       #   Failed run -> PII-redacted diagnostic bundle
+├── agent.py          #   Bundle -> Claude -> structured verdict + edits (read-only)
+├── prompts/system.md #   The rules the model works under
+├── edits.py          #   Exact search-and-replace patches, all-or-nothing
+├── validate.py       #   Phase 3: may this patch become a branch? Checks, then routing
+├── remediate.py      #   Diagnose -> patch -> validate, retrying with the rejection reason
+├── redteam.py        #   Crafted bad patches the validator must reject or route to a human
+├── dbtrun.py         #   Running dbt inside project copies
+├── pipeline.py       #   Phase 4: failed build -> exactly one PR or issue
+├── gitops.py         #   Bot-authored branch via a throwaway worktree; PR body
+├── github.py         #   Issues/PRs via `gh`, or a local stand-in folder
+├── quarantine.py     #   One self-closing issue per source with conflicting records
+├── chaos.py          #   Inject -> build -> diagnose -> fix -> verify, step by step
+├── explore.py        #   Frozen clean/broken/fixed DuckDB snapshots, compared
+└── tests/            #   Guardrail tests, run in CI
+requirements-remediation.txt  # anthropic + pytest, kept out of the core install
 ```
 
 ## Licence

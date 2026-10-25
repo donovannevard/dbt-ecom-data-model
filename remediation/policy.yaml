@@ -1,0 +1,150 @@
+# AI remediation policy — the single source of truth for what the remediation
+# layer may do. See docs/ai-remediation.md.
+#
+# Everything here is enforced by code (remediation/risk.py now; the Phase 3
+# validator later) and, for merge rights, by GitHub itself through the
+# generated .github/CODEOWNERS. Nothing in this file is advice to the model.
+
+version: 1
+
+# Ordered least to most restrictive. A change takes the most restrictive tier
+# of every node it touches and every node downstream of those.
+tiers: [auto, quarantine]
+
+# Applied to any node without meta.remediation_tier and to any file that maps
+# to no dbt node at all. Must stay the most restrictive tier.
+default_tier: quarantine
+
+# CI failures allowed on one remediation PR before the loop blocks itself and
+# hands over to a human (Phase 5).
+max_ci_failures: 3
+
+# Owner written into the generated CODEOWNERS. Required reviewer for every
+# file except auto-tier model and macro files.
+codeowner: "@donovannevard"
+
+# Paths a remediation patch may never touch, whatever its tier. Includes the
+# remediation layer itself and CI: the agent must not be able to edit its own
+# guardrails. Glob syntax, matched against repo-relative paths.
+protected_paths:
+  - .github/**
+  - remediation/**
+  - scripts/**
+  - orchestration/**
+  - tests/**
+  - seeds/**
+  - snapshots/**
+  - dbt_project.yml
+  - profiles.yml
+  - packages.yml
+  - package-lock.yml
+  - requirements*.txt
+  - Dockerfile
+  - docker-compose.yml
+  - Makefile
+
+# Paths a remediation patch may touch at all. Anything else is rejected, as
+# is anything matching protected_paths. `*` crosses `/` here, so models/*.sql
+# covers every model at any depth.
+editable_paths:
+  - models/*.sql
+  - models/*.yml
+  - models/*.yaml
+  - macros/*.sql
+
+# Config keys a patch may never change. remediation_tier especially: risk is
+# always computed from the BASE branch's manifest, but a patch that flips a
+# model to auto would poison every later run once merged.
+protected_meta_keys: [remediation_tier, pii]
+
+# Test definitions are hard-rejected: any change to an existing test's
+# definition, arguments, severity, thresholds or where clause fails validation
+# outright (Phase 3). Adding a new test is allowed.
+reject_test_changes: true
+
+validator:
+  # Claude gets this many more attempts, each told why the last was rejected,
+  # before the patch is given up on. These run before any branch exists, so
+  # they don't count towards max_ci_failures.
+  max_retries: 2
+  # A passing patch whose stated confidence is below this goes to a human
+  # even if its lineage tier is auto.
+  min_confidence_for_auto: 0.8
+
+ci:
+  # Phase 5. Claude writes at most this many attempts on one PR. So:
+  #   Claude's fix fails CI         -> stop, a human takes over
+  #   a deterministic fix fails CI  -> Claude gets one attempt with the CI
+  #                                    output; if that fails CI too, stop
+  # max_ci_failures (above) stays as an absolute cap, and spend per failure
+  # is capped as well.
+  max_claude_attempts: 1
+  max_cost_usd_per_failure: 1.00
+  # Characters of failed-step log kept per CI failure (the tail, where the
+  # error is).
+  log_chars: 6000
+
+auto_merge:
+  # Phase 6. A remediation PR merges itself once required checks pass only if
+  # this is on, the AI_REMEDIATION_AUTOMERGE repository variable is "true",
+  # the validator routed it `auto`, and every model it reaches is listed
+  # below. Autonomy is granted per model, never assumed. GitHub's own branch
+  # protection still applies on top: required checks, and a code-owner review
+  # for any owned file.
+  enabled: true
+  # Merged by the remediation workflow itself once CI passes on the PR's
+  # exact head commit, not by GitHub's native auto-merge, which needs branch
+  # protection (unavailable on private repos on the free plan). Where branch
+  # protection exists, GitHub enforces it on that merge too.
+  # rebase keeps the fix's author (Claude, or dbt-ecom-remediation) on main;
+  # squash would make the merger the author.
+  method: rebase
+  models:
+    - agg_marketing
+    - dim_date
+
+github:
+  # Branches are cut from this and PRs target it.
+  base_branch: main
+  branch_prefix: ai-remediation/
+  # Commit identity for remediation fixes, and only for those: a fix Claude
+  # diagnosed and wrote is attributed to Claude, and every other commit in
+  # the repo stays the maintainer's. A Co-Authored-By trailer with the same
+  # identity is added too, so the attribution survives a squash merge.
+  bot_name: Claude
+  bot_email: noreply@anthropic.com
+  # Fixes no model wrote (deterministic remediation) are authored by the
+  # remediation layer itself, never credited to Claude.
+  deterministic_name: dbt-ecom-remediation
+  deterministic_email: dbt-ecom-remediation@users.noreply.github.com
+
+agent:
+  # Every response the API returned (and billed) is kept locally, keyed by a
+  # hash of the entire request, and replayed instead of re-sent within this
+  # window. Any change to the prompt, bundle, rules or schema is a new key.
+  response_cache_hours: 24
+
+diagnostics:
+  # Rows sampled from each stored-failures table (and, for uniqueness tests,
+  # rows fetched per duplicated key). Ten shows a pattern; failure tables of
+  # wide models (fct_transactions) cost ~600 characters a row.
+  max_failure_rows: 10
+  # Per SQL blob in the bundle; longer text is truncated with a marker.
+  max_sql_chars: 20000
+  # Upstream lineage depth included around the failing model.
+  lineage_hops: 2
+  # Redacted in every failure-row sample, in addition to any column tagged
+  # meta.pii in the manifest. Exact column names, case-insensitive.
+  pii_columns:
+    - email
+    - first_name
+    - last_name
+    - full_name
+    - phone
+    - phone_number
+    - address
+    - address_line_1
+    - address_line_2
+    - postcode
+    - postal_code
+    - ip_address

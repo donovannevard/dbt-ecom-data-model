@@ -109,6 +109,9 @@ models:
 
   - name: stg_google_analytics__sessions
     description: "Cleaned and renamed Google Analytics 4 session data"
+    config:
+      meta:
+        remediation_tier: auto
     columns:
       - name: session_id
         tests:
@@ -150,7 +153,18 @@ models:
         tests:
           - not_null
           - unique
+      - name: first_name
+        config:
+          meta:
+            pii: true
+      - name: last_name
+        config:
+          meta:
+            pii: true
       - name: email
+        config:
+          meta:
+            pii: true
         tests:
           - not_null
   - name: stg_order_items

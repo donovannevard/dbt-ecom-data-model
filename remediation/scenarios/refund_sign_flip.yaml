@@ -1,0 +1,17 @@
+id: refund_sign_flip
+title: Refund proration sign flips
+kind: code
+description: >
+  The prorated refund comes out negative, so net revenue exceeds gross. The
+  invariant tests on fct_transactions catch it. Revenue: quarantined.
+faults:
+  - op: replace
+    file: models/analytics/fct_transactions.sql
+    old: "oi.gross_amount * {{ safe_divide('t.refund_amount_reporting', 'o.order_subtotal') }} AS refund_amount"
+    new: "-oi.gross_amount * {{ safe_divide('t.refund_amount_reporting', 'o.order_subtotal') }} AS refund_amount"
+expect:
+  failing_tests:
+    - {model: fct_transactions, test: expression_is_true}
+  verdicts: [code_fix]
+  tier: quarantine
+  fix_files: [models/analytics/fct_transactions.sql]

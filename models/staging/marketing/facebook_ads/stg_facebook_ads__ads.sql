@@ -4,7 +4,7 @@
 -- and stg_google_ads__clicks holds the daily performance grain.
 WITH
     source_data AS (
-        SELECT * FROM {{ source('extract', 'facebook_ads_ads') }}
+        {{ deduplicate_source(source('extract', 'facebook_ads_ads'), ['id']) }}
     ),
     renamed AS (
         SELECT

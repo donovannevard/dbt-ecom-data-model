@@ -4,7 +4,7 @@
 -- conversion is applied here — check your actual raw data before copying.
 WITH
     source_data AS (
-        SELECT * FROM {{ source('extract', 'stripe_payments') }}
+        {{ deduplicate_source(source('extract', 'stripe_payments'), ['id']) }}
     ),
     renamed AS (
         SELECT

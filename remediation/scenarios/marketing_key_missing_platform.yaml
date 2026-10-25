@@ -1,0 +1,18 @@
+id: marketing_key_missing_platform
+title: Campaign surrogate key loses its platform
+kind: code
+description: >
+  agg_marketing's surrogate key drops platform, so Google and Facebook
+  campaigns with the same numeric id collide — exactly what the comment at the
+  top of the model warns about. Auto tier: agg_marketing is a leaf.
+faults:
+  - op: replace
+    file: models/analytics/agg_marketing.sql
+    old: "generate_surrogate_key(['platform', 'campaign_id'])"
+    new: "generate_surrogate_key(['campaign_id'])"
+expect:
+  failing_tests:
+    - {model: agg_marketing, test: unique, column: id}
+  verdicts: [code_fix]
+  tier: auto
+  fix_files: [models/analytics/agg_marketing.sql]

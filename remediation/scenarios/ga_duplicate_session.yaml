@@ -1,0 +1,16 @@
+id: ga_duplicate_session
+title: GA4 export duplicates a session
+kind: data
+description: >
+  A session is exported twice, identical in every column. Analytics exports
+  genuinely do this. deduplicate_source() collapses the copies, so nothing
+  downstream changes and only the source's duplicate-key warning fires.
+faults:
+  - op: duplicate_row
+    file: seeds/example/commercial/google_analytics/google_analytics_sessions.csv
+    row: 20
+expect:
+  failing_tests: []
+  warning_tests:
+    - {model: google_analytics_sessions, test: unique_combination_of_columns}
+  only_differs_from_clean: [extract.google_analytics_sessions]

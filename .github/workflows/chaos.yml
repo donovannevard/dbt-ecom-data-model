@@ -1,0 +1,102 @@
+name: chaos (fault injection)
+
+# Phase 1 of the AI remediation layer (docs/ai-remediation.md). Breaks the
+# project on purpose — bad source data or a code regression from
+# remediation/scenarios/ — builds it, and produces the diagnostic bundle a
+# remediation agent would receive. Also proves each scenario still causes the
+# failure it claims to; one that no longer does fails this run.
+#
+# With `diagnose` ticked, each bundle also goes to Claude (Phase 2) and the
+# diagnosis is scored against the scenario. That needs the ANTHROPIC_API_KEY
+# secret and the AI_REMEDIATION_ENABLED repository variable set to `true` —
+# the kill switch for every model call this repo makes.
+#
+# Every scenario runs in a throwaway scratch copy inside the runner. Nothing
+# is committed or pushed, and the workflow has read-only repo access.
+
+"on":
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Scenario id from remediation/scenarios/, or 'all'"
+        required: true
+        default: all
+        type: string
+      diagnose:
+        description: "Send each bundle to Claude and score the diagnosis (uses API credits)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  DBT_PROFILES_DIR: .
+
+jobs:
+  chaos:
+    name: inject ${{ inputs.scenario }}
+    # Scenarios are defined against main; a dispatch from another branch would
+    # be testing code that isn't what the remediation layer will see.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dbt and test dependencies
+        run: pip install -r requirements.txt -r requirements-remediation.txt
+
+      # Installed once here; chaos.py copies dbt_packages into each scratch.
+      - run: dbt deps
+
+      # Fail fast and loudly rather than silently skipping the part that was
+      # asked for.
+      - name: Check the kill switch
+        if: inputs.diagnose && vars.AI_REMEDIATION_ENABLED != 'true'
+        run: |
+          echo "::error::diagnose requested but AI_REMEDIATION_ENABLED is not 'true'"
+          exit 1
+
+      - name: Inject, build and diagnose
+        # Through env, never interpolated into the script: a workflow input
+        # is untrusted text.
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+          DIAGNOSE: ${{ inputs.diagnose && '--diagnose' || '' }}
+          ANTHROPIC_API_KEY: ${{ inputs.diagnose && secrets.ANTHROPIC_API_KEY || '' }}
+        run: python -m remediation.chaos --root chaos-out run "$SCENARIO" $DIAGNOSE
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f chaos-out/report.md ]; then
+            cat chaos-out/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          for dir in chaos-out/*/; do
+            for f in summary.md diagnosis.md; do
+              [ -f "$dir$f" ] && { echo; cat "$dir$f"; } >> "$GITHUB_STEP_SUMMARY"
+            done
+          done
+
+      # Per scenario: bundle.json (what the model is sent, PII redacted),
+      # diagnosis.json when diagnosed, dbt.log for debugging the scenario.
+      - name: Upload diagnostic bundles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-bundles
+          # Reports only: each workspace also holds a project copy and
+          # DuckDB snapshots, which are tens of MB and only useful locally.
+          path: |
+            chaos-out/*.md
+            chaos-out/*.json
+            chaos-out/*/*.md
+            chaos-out/*/*.json
+            chaos-out/*/*.log
+          retention-days: 14

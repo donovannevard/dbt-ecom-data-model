@@ -1,0 +1,17 @@
+id: orders_null_customer
+title: Order arrives without a customer
+kind: data
+description: >
+  An order row has an empty user_id. Nothing in the models can invent the
+  customer; the source record is wrong.
+faults:
+  - op: set_value
+    file: seeds/example/prod/prod_orders.csv
+    column: user_id
+    rows: [10]
+    value: ""
+expect:
+  failing_tests:
+    - {model: stg_orders, test: not_null, column: user_id}
+  verdicts: [data_issue]
+  tier: quarantine

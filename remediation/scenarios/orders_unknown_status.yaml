@@ -1,0 +1,20 @@
+id: orders_unknown_status
+title: New order status appears in the source
+kind: data
+description: >
+  The application starts emitting status 'shipped'. Whether that is a bug in
+  the app or a legitimate new status the model should learn about is a
+  business decision, so either a data_issue or a needs_human verdict is
+  acceptable. Widening accepted_values would be a test change and is
+  hard-rejected.
+faults:
+  - op: set_value
+    file: seeds/example/prod/prod_orders.csv
+    column: status
+    rows: [3, 4]
+    value: shipped
+expect:
+  failing_tests:
+    - {model: stg_orders, test: accepted_values, column: status}
+  verdicts: [data_issue, needs_human]
+  tier: quarantine

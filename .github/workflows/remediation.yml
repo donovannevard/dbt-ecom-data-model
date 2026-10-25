@@ -1,0 +1,106 @@
+name: remediation
+
+# The AI remediation loop (docs/ai-remediation.md), triggered by CI itself:
+#
+#   `dbt build` fails on main          -> diagnose, validate, open a PR or issue
+#   `dbt build` fails on a remediation -> Phase 5: stop if Claude wrote that
+#   PR (ai-remediation/*)                 attempt; else one Claude attempt with
+#                                         the CI output, then stop if it fails
+#   `dbt build` passes on a            -> Phase 6: merge it, if it was approved
+#   remediation PR                        for auto-merge (allowlisted model,
+#                                         auto tier, kill switch on)
+#
+# Off unless the AI_REMEDIATION_ENABLED repository variable is "true", so the
+# workflow is inert in any repo that hasn't opted in. Needs secrets
+# ANTHROPIC_API_KEY, REMEDIATION_APP_ID and REMEDIATION_APP_KEY (the
+# dbt-ecom-remediation App's private key); AI_REMEDIATION_AUTOMERGE="true"
+# additionally allows auto-merge.
+
+"on":
+  workflow_run:
+    workflows: ["dbt build"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+# One remediation per branch at a time: a retry must never race another.
+concurrency:
+  group: remediation-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+env:
+  DBT_PROFILES_DIR: .
+
+jobs:
+  # CI passed on a remediation PR: merge it if it was approved for
+  # auto-merge. Light: no dbt build needed.
+  merge:
+    name: auto-merge ${{ github.event.workflow_run.head_branch }}
+    if: >-
+      vars.AI_REMEDIATION_ENABLED == 'true'
+      && github.event.workflow_run.conclusion == 'success'
+      && startsWith(github.event.workflow_run.head_branch, 'ai-remediation/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyyaml
+
+      - name: Merge if approved
+        env:
+          REMEDIATION_APP_ID: ${{ secrets.REMEDIATION_APP_ID }}
+          REMEDIATION_APP_KEY: ${{ secrets.REMEDIATION_APP_KEY }}
+          AI_REMEDIATION_AUTOMERGE: ${{ vars.AI_REMEDIATION_AUTOMERGE }}
+        run: python -m remediation.ci --event "$GITHUB_EVENT_PATH"
+
+  remediate:
+    name: remediate ${{ github.event.workflow_run.head_branch }}
+    if: >-
+      vars.AI_REMEDIATION_ENABLED == 'true'
+      && github.event.workflow_run.conclusion == 'failure'
+      && (github.event.workflow_run.head_branch == 'main'
+          || startsWith(github.event.workflow_run.head_branch, 'ai-remediation/'))
+    runs-on: ubuntu-latest
+    steps:
+      # The base branch, built: that reproduces the failure being fixed.
+      # persist-credentials off so pushes use the App's token (via gh), not
+      # GITHUB_TOKEN, whose pushes don't trigger CI on the PR.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dbt and the remediation layer
+        run: pip install -r requirements.txt -r requirements-remediation.txt
+
+      - run: dbt deps
+
+      - run: dbt seed
+
+      # Expected to fail: that's the failure being remediated. The bundle is
+      # built from what it leaves in target/ and dev.duckdb.
+      - name: Build the base branch
+        run: dbt build || echo "build failed, as expected"
+
+      - name: Remediate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          REMEDIATION_APP_ID: ${{ secrets.REMEDIATION_APP_ID }}
+          REMEDIATION_APP_KEY: ${{ secrets.REMEDIATION_APP_KEY }}
+          AI_REMEDIATION_AUTOMERGE: ${{ vars.AI_REMEDIATION_AUTOMERGE }}
+        run: python -m remediation.ci --event "$GITHUB_EVENT_PATH"

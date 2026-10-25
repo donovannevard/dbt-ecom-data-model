@@ -37,6 +37,7 @@ lineage directly.
 # class — postponed evaluation makes that check fail with a confusing message.
 import json
 import os
+import sys
 from pathlib import Path
 
 from dagster import (
@@ -132,6 +133,36 @@ def dbt_project_assets(context: AssetExecutionContext, dbt: DbtCliResource):
     being discovered afterwards.
     """
     yield from dbt.cli(["build"], context=context).stream()
+    _alert_on_quarantine(context, dbt)
+
+
+def _alert_on_quarantine(context: AssetExecutionContext, dbt: DbtCliResource) -> None:
+    """Raise (or close) quarantine issues once the build has finished.
+
+    The duplicate checks on raw sources are not part of the build above:
+    dagster-dbt selects its own assets, and the raw tables belong to
+    raw_landing_tables, so those tests are never selected. They run here
+    instead, in a separate invocation with its own target directory, and the
+    quarantine is synced from that run's results.
+
+    Local stand-in tracker by default (.remediation-github/); set
+    REMEDIATION_GITHUB=1 for real GitHub issues. Alerting must never fail the
+    pipeline, so any problem here is logged and swallowed.
+    """
+    try:
+        # Dagster's step process runs from its own working directory, so the
+        # project root (where remediation/ lives) isn't importable by default.
+        if os.fspath(DBT_PROJECT_DIR) not in sys.path:
+            sys.path.insert(0, os.fspath(DBT_PROJECT_DIR))
+        from remediation.quarantine import alert
+
+        checks = dbt.cli(["test", "--select", "source:*"])
+        checks.wait()
+        for action in alert(DBT_PROJECT_DIR, Path(checks.target_path),
+                            github=os.environ.get("REMEDIATION_GITHUB") == "1"):
+            context.log.info(f"quarantine: {action}")
+    except Exception as exc:  # noqa: BLE001 - an alert channel must not break the build
+        context.log.warning(f"quarantine alerting failed: {exc}")
 
 
 # A single job over the whole graph: raw landing first, then the dbt DAG.

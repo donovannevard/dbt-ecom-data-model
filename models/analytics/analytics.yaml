@@ -93,6 +93,9 @@ models:
 
   - name: agg_marketing
     description: "Final marketing information"
+    config:
+      meta:
+        remediation_tier: auto
     columns:
       - name: id
         tests:
@@ -137,6 +140,9 @@ models:
           - dbt_utils.at_least_one
 
   - name: dim_date
+    config:
+      meta:
+        remediation_tier: auto
     tests:
       # Would have caught the original week_start_date bug: it returned the
       # Monday *after* a Monday, so the date fell outside its own week.
@@ -251,6 +257,9 @@ models:
 
   - name: fct_sessions
     description: "Session metrics, such as page views, visits, visit duration, etc"
+    config:
+      meta:
+        remediation_tier: auto
 
   - name: fct_transactions
     description: >

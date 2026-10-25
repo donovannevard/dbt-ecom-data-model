@@ -11,7 +11,7 @@ env:
 
 jobs:
   # The whole project, end to end, on every push: seeds, snapshots, all 40
-  # models and all 130 tests, against DuckDB. No warehouse account, no
+  # models and all 162 tests, against DuckDB. No warehouse account, no
   # secrets, so this runs on forks and pull requests from anyone — and the
   # badge on the README means what it says.
   #
@@ -239,3 +239,52 @@ jobs:
       - name: Stop
         if: always()
         run: docker compose --profile orchestration --profile tools down
+
+  # Guardrails for the AI remediation layer (docs/ai-remediation.md), in
+  # seconds rather than minutes: risk tiers computed from the manifest,
+  # CODEOWNERS matching those tiers, and every fault-injection scenario still
+  # applying cleanly to the current code. The slow end-to-end scenario run —
+  # inject, build, diagnose — is the separate chaos.yml workflow.
+  remediation:
+    name: remediation guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dbt and test dependencies
+        run: pip install -r requirements.txt -r requirements-remediation.txt
+
+      - run: dbt deps
+
+      # The risk model reads lineage and meta.remediation_tier from here.
+      - run: dbt parse
+
+      - run: pytest remediation -q
+
+  # Hand-written bad patches the Phase 3 validator must reject or route to a
+  # human: widened tests, severity downgrades, tier flips in SQL config(),
+  # silent row filtering and more. Runs on every push so a change that
+  # weakens the validator fails here, not in production. No API calls and no
+  # secrets: the "diagnoses" are written in remediation/redteam.py.
+  validator-redteam:
+    name: validator red team
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dbt and test dependencies
+        run: pip install -r requirements.txt -r requirements-remediation.txt
+
+      - run: dbt deps
+
+      - run: python -m remediation.redteam

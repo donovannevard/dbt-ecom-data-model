@@ -62,3 +62,17 @@ venv/
 
 # Dagster local instance (run history, logs)
 .dagster/
+
+# AI remediation fault-injection workspaces (make chaos): project copies and
+# DuckDB snapshots per scenario. Must stay ignored — the copies are built from
+# git's list of unignored files, so an unignored .chaos/ would copy itself.
+.chaos/
+
+# Claude responses cached locally for 24h (remediation/agent.py), full prompt
+# and answer per request. Never committed: they're paid-for, but local.
+.remediation-cache/
+
+# Local stand-in for GitHub issues and PRs (remediation/github.py), used until
+# the real repo is wired up: what quarantine alerts and remediation PRs would
+# post, as JSON and Markdown.
+.remediation-github/

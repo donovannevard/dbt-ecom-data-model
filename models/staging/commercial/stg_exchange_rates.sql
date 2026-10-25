@@ -1,6 +1,6 @@
 WITH
     source_data AS (
-        SELECT * FROM {{ source('extract', 'exchange_rates') }}
+        {{ deduplicate_source(source('extract', 'exchange_rates'), ['date', 'base_currency', 'target_currency']) }}
     ),
     renamed AS (
         SELECT

@@ -1,0 +1,19 @@
+id: week_start_off_by_one
+title: Week start drifts by a day
+kind: code
+description: >
+  Reintroduces the class of bug documented in macros/week_bounds.sql: the
+  Monday offset is wrong, so Mondays fall outside their own week. The
+  expression tests on dim_date catch it. Auto tier: the macro reaches only
+  dim_date.
+faults:
+  - op: replace
+    file: macros/week_bounds.sql
+    old: "'(0 - MOD('"
+    new: "'(1 - MOD('"
+expect:
+  failing_tests:
+    - {model: dim_date, test: expression_is_true}
+  verdicts: [code_fix]
+  tier: auto
+  fix_files: [macros/week_bounds.sql]

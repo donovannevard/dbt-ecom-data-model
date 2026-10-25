@@ -1,0 +1,19 @@
+id: stripe_duplicate_payment
+title: Stripe connector re-delivers a payment
+kind: data
+description: >
+  One payment row lands twice, identical in every column, as happens when an
+  ELT sync retries after a partial failure. The project absorbs it:
+  deduplicate_source() collapses the copies, so staging and everything
+  downstream match the clean build exactly, and the duplicate-key warning on
+  the source tells the upstream team their sync re-delivered rows. It must not
+  trip the conflict check, because nothing conflicts.
+faults:
+  - op: duplicate_row
+    file: seeds/example/commercial/stripe/stripe_payments.csv
+    row: 5
+expect:
+  failing_tests: []
+  warning_tests:
+    - {model: stripe_payments, test: unique_combination_of_columns}
+  only_differs_from_clean: [extract.stripe_payments]

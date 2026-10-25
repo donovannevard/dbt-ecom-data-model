@@ -1,0 +1,18 @@
+id: ga_session_id_mapping
+title: Session id mapped from the wrong column
+kind: code
+description: >
+  The staging rename maps session_id from pageviews instead of id: a
+  copy-paste slip that keeps the type right and the values plausible. Auto
+  tier.
+faults:
+  - op: replace
+    file: models/staging/commercial/google_analytics/stg_google_analytics__sessions.sql
+    old: "CAST(id AS INTEGER) AS session_id"
+    new: "CAST(pageviews AS INTEGER) AS session_id"
+expect:
+  failing_tests:
+    - {model: stg_google_analytics__sessions, test: unique, column: session_id}
+  verdicts: [code_fix]
+  tier: auto
+  fix_files: [models/staging/commercial/google_analytics/stg_google_analytics__sessions.sql]

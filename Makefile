@@ -20,13 +20,13 @@ export DAGSTER_HOME
 ENV_FILE ?= .env
 export ENV_FILE
 
-WITH_ENV := $(PY) scripts/with_env.py
 PY      := $(VENV)/bin/python
+WITH_ENV := $(PY) scripts/with_env.py
 PIP     := $(VENV)/bin/pip
 DBT     := $(VENV)/bin/dbt
 
 .DEFAULT_GOAL := help
-.PHONY: help dbt install install-orchestration verify-airflow-examples verify-warehouse verify-warehouse-smoke check-env deps seed build up test docs docs-serve query dagster dagster-run docker-dagster docker-up docker-build docker-shell docker-run docker-down regen-seeds parse-all clean fresh shell
+.PHONY: help dbt install duckdb-ui remediation-test chaos chaos-changes chaos-diff chaos-shell chaos-ui chaos-diagnose chaos-fix chaos-rebuild chaos-clean validator-redteam chaos-pr sandbox-sync automerge-on automerge-off remediate quarantine quarantine-sync risk codeowners install-orchestration verify-airflow-examples verify-warehouse verify-warehouse-smoke check-env deps seed build up test docs docs-serve query dagster dagster-run docker-dagster docker-up docker-build docker-shell docker-run docker-down regen-seeds parse-all clean fresh shell
 
 help:  ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -101,6 +101,12 @@ parse-all:  ## Parse against DuckDB, Snowflake, Redshift and BigQuery targets
 		$(DBT) parse --target $$t --no-partial-parse >/dev/null 2>&1 \
 			&& echo "OK" || echo "FAILED"; \
 	done
+
+# Attaches a copy of dev.duckdb, taken at launch, so the UI never locks the
+# file dbt writes to; re-run after a build to refresh. Any fault-injection
+# databases in .chaos/ appear alongside it (gone again after chaos-clean).
+duckdb-ui:  ## DuckDB UI in the browser on your local build, plus any fault-injection databases
+	@$(PY) -m remediation.explore duckdb-ui
 
 shell:  ## Open a DuckDB SQL shell on the built database (needs the duckdb CLI)
 	@command -v duckdb >/dev/null 2>&1 || (echo "duckdb CLI not found. Install with: brew install duckdb"; exit 1)
@@ -206,6 +212,125 @@ verify-airflow-examples:  ## Import-check the reference Airflow DAGs (installs A
 			orchestration/external/airflow_bash_dag.py
 
 # ---------------------------------------------------------------------------
+# AI remediation layer — see docs/ai-remediation.md
+# ---------------------------------------------------------------------------
+
+remediation-test:  ## Remediation guardrail tests: risk tiers, CODEOWNERS, scenarios
+	@$(PIP) install --quiet -r requirements-remediation.txt
+	@$(DBT) parse -q
+	$(VENV)/bin/pytest remediation -q
+
+# Fault injection, step by step. Add TARGET=snowflake_prod (or redshift_prod,
+# bigquery_local) to run any chaos step on that warehouse instead of DuckDB:
+# credentials come from .env.snowflake / .env.redshift / .env.bigquery, and
+# workspaces live in .chaos/_wh_<target>/.
+#
+# Each scenario keeps a workspace in
+# .chaos/<scenario>/ with clean, broken and (after a fix) fixed DuckDB
+# snapshots; this checkout is never modified. Only chaos-diagnose calls the
+# Claude API. See docs/ai-remediation.md.
+chaos:  ## Break the project on purpose and build it (SCENARIO=<id>|all)
+	@test -n "$(SCENARIO)" || { $(PY) -m remediation.inject list; echo; \
+		echo "Set SCENARIO, e.g. make chaos SCENARIO=refund_sign_flip  (or SCENARIO=all)"; exit 1; }
+	$(PY) -m remediation.chaos $(if $(TARGET),--target $(TARGET)) run $(SCENARIO)
+
+# AGAINST=fixed compares clean with the fixed build instead of the broken one.
+chaos-changes:  ## Which tables a scenario changed, clean vs broken (SCENARIO=, AGAINST=fixed)
+	@$(PY) -m remediation.explore changes $(SCENARIO) --to $(or $(AGAINST),broken)
+
+chaos-diff:  ## Rows that differ in one table (SCENARIO=, TABLE=schema.table, AGAINST=fixed)
+	@test -n "$(TABLE)" || { echo "Set TABLE, e.g. TABLE=extract.stripe_payments (see make chaos-changes)"; exit 1; }
+	@$(PY) -m remediation.explore diff $(SCENARIO) $(TABLE) --to $(or $(AGAINST),broken)
+
+chaos-shell:  ## duckdb SQL shell with clean/broken/fixed attached (SCENARIO=)
+	@$(PY) -m remediation.explore shell $(SCENARIO)
+
+chaos-ui:  ## DuckDB UI in the browser with clean/broken/fixed attached (SCENARIO=)
+	@$(PY) -m remediation.explore ui $(SCENARIO)
+
+# One Claude call per scenario, roughly $0.05-0.30 on Opus 5.5. Needs
+# ANTHROPIC_API_KEY. SCENARIO=all runs every scenario end to end, diagnosed.
+# Answers are cached locally for 24h by exact request, so a re-run replays
+# them for free; FRESH=1 forces a new call. The key can live in .env
+# (gitignored) instead of being exported in every terminal.
+chaos-diagnose:  ## Ask Claude to diagnose a scenario's failure (SCENARIO=<id>|all) — uses credits
+	@test -n "$(SCENARIO)" || { echo "Set SCENARIO, e.g. make chaos-diagnose SCENARIO=refund_sign_flip"; exit 1; }
+	@$(PIP) install --quiet -r requirements-remediation.txt
+	@if [ "$(SCENARIO)" = "all" ]; then $(WITH_ENV) $(PY) -m remediation.chaos $(if $(TARGET),--target $(TARGET)) run all --diagnose $(if $(FRESH),--fresh); \
+		else $(WITH_ENV) $(PY) -m remediation.chaos $(if $(TARGET),--target $(TARGET)) diagnose $(SCENARIO) $(if $(FRESH),--fresh); fi
+
+chaos-fix:  ## Apply Claude's edits to a copy, rebuild and verify (SCENARIO=)
+	$(WITH_ENV) $(PY) -m remediation.chaos $(if $(TARGET),--target $(TARGET)) fix $(SCENARIO)
+
+# First run creates .chaos/<scenario>/fixed/ from broken/ for you to edit.
+chaos-rebuild:  ## Rebuild and verify your own fix in .chaos/<scenario>/fixed/ (SCENARIO=)
+	$(PY) -m remediation.chaos $(if $(TARGET),--target $(TARGET)) rebuild $(SCENARIO)
+
+# Phase 6 auto-merge, on or off, without a commit: flips the repository
+# variable the remediation workflow checks at merge time. Off means every
+# remediation PR waits for a person to merge it. REPO defaults to this repo's
+# origin.
+automerge-on:  ## Let allowlisted, auto-tier remediation PRs merge themselves (REPO=owner/name)
+	gh variable set AI_REMEDIATION_AUTOMERGE --body true $(if $(REPO),-R $(REPO))
+	@echo "Auto-merge ON: allowlisted auto-tier fixes merge themselves once CI passes."
+
+automerge-off:  ## Every remediation PR waits for a person to merge it (REPO=owner/name)
+	gh variable set AI_REMEDIATION_AUTOMERGE --body false $(if $(REPO),-R $(REPO))
+	@echo "Auto-merge OFF: every remediation PR needs a person to merge it."
+
+# Quarantined source records: conflicting versions of a record that
+# deduplicate_source() holds out of staging. `quarantine` reports on the last
+# local build; `quarantine-sync` opens/refreshes/closes one issue per source
+# in the local stand-in (.remediation-github/), or on GitHub with GITHUB=1.
+# Phase 4 on the real project after a failed build: diagnose, validate, and
+# open a PR or issue. Local stand-in by default (commits, never pushes);
+# GITHUB=1 pushes the branch to origin and opens it on GitHub.
+remediate:  ## After a failed build: PR or issue for the failure (local stand-in; GITHUB=1 for real)
+	@$(PIP) install --quiet -r requirements-remediation.txt
+	$(WITH_ENV) $(PY) -m remediation.pipeline $(if $(GITHUB),--github)
+
+quarantine:  ## What's quarantined in the last local build
+	@$(PY) -m remediation.quarantine report $(if $(TARGET),--target $(TARGET))
+
+quarantine-sync:  ## Open/refresh/close quarantine issues (local stand-in; GITHUB=1 for real issues)
+	$(WITH_ENV) $(PY) -m remediation.quarantine sync $(if $(GITHUB),--github)
+
+# Hand-written bad patches (widened tests, severity downgrades, tier flips,
+# silent row filtering...) that the Phase 3 validator must reject or route to
+# a human. No API calls.
+validator-redteam:  ## Throw crafted bad patches at the Phase 3 validator (~2 min, no API)
+	$(PY) -m remediation.redteam
+
+# Phase 4 against a sandbox: a git repo whose main has the fault committed and
+# a bare repo standing in for GitHub. Opens the PR (validated fix) or issue
+# (data issue, needs a human, no valid fix) in .chaos/<scenario>/github/.
+# Reuses the saved diagnosis; only a validator rejection calls the API.
+# REPO=owner/name uses a real, empty, private GitHub repo as the sandbox
+# remote instead: real PR, labels and CI. Only the sandbox points there.
+chaos-pr:  ## Open the PR or issue a scenario's failure would get, in a sandbox (SCENARIO=, REPO=, DIAGNOSIS=)
+	$(WITH_ENV) $(PY) -m remediation.chaos pr $(SCENARIO) $(if $(REPO),--github-repo $(REPO)) $(if $(DIAGNOSIS),--diagnosis $(DIAGNOSIS))
+
+# Sets the GitHub sandbox's main to the clean project (SCENARIO=clean) or to
+# a scenario's fault, as an ordinary commit by you. With the remediation
+# workflow enabled there, pushing a fault starts the autonomous loop.
+sandbox-sync:  ## Point the GitHub sandbox's main at the clean project or a fault (REPO=, SCENARIO=clean|<id>)
+	@test -n "$(REPO)" -a -n "$(SCENARIO)" || { echo "Set REPO=owner/name and SCENARIO=clean or a scenario id"; exit 1; }
+	$(PY) -m remediation.chaos sandbox $(SCENARIO) --github-repo $(REPO)
+
+chaos-clean:  ## Delete every fault-injection workspace
+	rm -rf .chaos
+
+# Usage: make risk FILES="models/analytics/dim_date.sql macros/week_bounds.sql"
+risk:  ## Risk tier a change to these files would carry (FILES="...")
+	@test -n "$(FILES)" || { echo 'Set FILES, e.g. make risk FILES="models/analytics/dim_date.sql"'; exit 1; }
+	@$(DBT) parse -q
+	@$(PY) -m remediation.risk assess $(FILES)
+
+codeowners:  ## Regenerate .github/CODEOWNERS from the risk tiers
+	@$(DBT) parse -q
+	$(PY) -m remediation.risk codeowners --write
+
+# ---------------------------------------------------------------------------
 # Docker — the no-Python-on-your-machine path
 # ---------------------------------------------------------------------------
 
@@ -230,6 +355,6 @@ docker-down:  ## Stop all containers and remove them
 	docker compose --profile orchestration --profile tools down
 
 clean:  ## Remove build artefacts and the local database
-	rm -rf target dbt_packages logs dev.duckdb dev.duckdb.wal ci.duckdb ci.duckdb.wal
+	rm -rf target dbt_packages logs dev.duckdb dev.duckdb.wal ci.duckdb ci.duckdb.wal .chaos
 
 fresh: clean deps seed build  ## Wipe everything and rebuild from scratch

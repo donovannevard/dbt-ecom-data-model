@@ -8,22 +8,198 @@ sources:
       freshness:
         warn_after: { count: 24, period: hour }
         error_after: { count: 48, period: hour }
+    # Every raw table carries two warn-severity duplicate checks. Staging reads
+    # each one through deduplicate_source() (macros/deduplicate_source.sql),
+    # which collapses identical re-delivered copies and excludes keys whose
+    # copies conflict, so neither stops the build. These tests make both
+    # visible instead of silent:
+    #   unique_combination_of_columns  any duplicate key: tell the upstream
+    #                                  team their sync re-delivered rows
+    #   no_conflicting_duplicates      keys whose versions disagree; the
+    #                                  stored failures are the quarantine
+    #                                  table (dbt_test__audit), excluded from
+    #                                  staging until resolved at source
     tables:
       - name: exchange_rates
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [date, base_currency, target_currency]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [date, base_currency, target_currency]
+              config:
+                severity: warn
       - name: google_analytics_sessions
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: stripe_payments
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: stripe_refunds
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: google_ads_campaigns
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: google_ads_ad_groups
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: google_ads_ads
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: google_ads_clicks
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: facebook_ads_campaigns
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: facebook_ads_ad_sets
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: facebook_ads_ads
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: prod_customers
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: prod_orders
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: prod_order_items
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: prod_products
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn
       - name: prod_web_visits
         # a raw, ever-growing event log — should land far more often than
         # the batch-style sources above
@@ -31,3 +207,14 @@ sources:
           freshness:
             warn_after: { count: 2, period: hour }
             error_after: { count: 6, period: hour }
+        tests:
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [id]
+              config:
+                severity: warn
+          - no_conflicting_duplicates:
+              arguments:
+                key_columns: [id]
+              config:
+                severity: warn

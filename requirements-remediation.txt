@@ -1,0 +1,6 @@
+# AI remediation layer (remediation/). Kept separate from requirements.txt so
+# building the dbt project stays a two-package install.
+#
+#   pip install -r requirements.txt -r requirements-remediation.txt
+anthropic==1.15.0
+pytest==8.4.2

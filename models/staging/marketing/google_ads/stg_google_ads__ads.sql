@@ -1,6 +1,6 @@
 WITH
     source_data AS (
-        SELECT * FROM {{ source('extract', 'google_ads_ads') }}
+        {{ deduplicate_source(source('extract', 'google_ads_ads'), ['id']) }}
     ),
     renamed AS (
         SELECT

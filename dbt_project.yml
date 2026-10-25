@@ -25,6 +25,15 @@ models:
     +materialized: table
     +enabled: true
 
+    # AI remediation risk tier — see docs/ai-remediation.md. Every model is
+    # quarantined (human merge required) unless its own YAML opts it into
+    # `auto`. Fail-safe by construction: a new model starts quarantined, and
+    # remediation/risk.py raises the tier again if anything downstream of a
+    # change is quarantined, so opting in a model that feeds revenue has no
+    # effect.
+    +meta:
+      remediation_tier: quarantine
+
     # Staging layer — all staging models go to 'staging' schema
     staging:
       +materialized: view # Staging as views = fast iteration, no storage cost
@@ -47,6 +56,8 @@ models:
 seeds:
   dbt_ecom_data_model:
     +schema: seeds
+    +meta:
+      remediation_tier: quarantine
 
     example:
       +schema: extract
@@ -55,6 +66,10 @@ seeds:
 snapshots:
   dbt_ecom_data_model:
     +target_schema: snapshots
+    # SCD Type 2 history cannot be rebuilt once overwritten, so a change that
+    # reaches a snapshot always needs a human.
+    +meta:
+      remediation_tier: quarantine
 
 # Tests — fail loud and clear
 tests:

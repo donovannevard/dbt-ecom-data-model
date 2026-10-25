@@ -1,0 +1,18 @@
+id: orders_customer_key_swap
+title: Order customer key mapped from the order id
+kind: code
+description: >
+  stg_orders maps user_id from the order's own id. Every value is a valid
+  integer and not null, so staging tests pass; the relationships tests
+  downstream are what catch it. Customer data: quarantined.
+faults:
+  - op: replace
+    file: models/staging/prod/stg_orders.sql
+    old: "CAST(user_id AS INTEGER) AS user_id"
+    new: "CAST(id AS INTEGER) AS user_id"
+expect:
+  failing_tests:
+    - {model: dim_orders, test: relationships, column: customer_id}
+  verdicts: [code_fix]
+  tier: quarantine
+  fix_files: [models/staging/prod/stg_orders.sql]

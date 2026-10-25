@@ -122,7 +122,15 @@ dbt_ecom_data_model:
       threads: 8
       sslmode: prefer
       keepalives_idle: 240
-      connect_timeout: 10
+      # Despite the name, this is not just a connect timeout: dbt-redshift
+      # passes it to redshift_connector as the socket timeout, which is never
+      # reset after connecting, so it caps EVERY query. At 10 seconds the
+      # heavier models (dim_date's spine, fct_visits, int_marketing__combined,
+      # int_order__transactions) failed with "The read operation timed out".
+      # 10 minutes still turns a blocked security group into an eventual
+      # error rather than an indefinite hang (the reason it's set at all);
+      # raise it further for production volumes.
+      connect_timeout: 600
 
     redshift_dev:
       type: redshift
@@ -135,4 +143,4 @@ dbt_ecom_data_model:
       threads: 4
       sslmode: prefer
       keepalives_idle: 240
-      connect_timeout: 10
+      connect_timeout: 600  # caps every query, not just connecting: see redshift_prod

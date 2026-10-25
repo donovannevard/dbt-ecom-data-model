@@ -1,6 +1,6 @@
 WITH
     source_data AS (
-        SELECT * FROM {{ source('extract', 'prod_products') }}
+        {{ deduplicate_source(source('extract', 'prod_products'), ['id']) }}
     ),
     renamed AS (
         SELECT

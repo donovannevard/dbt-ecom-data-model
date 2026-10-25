@@ -62,6 +62,9 @@ models:
 
   - name: int_session__marketing_channel_classification
     description: "Determines the marketing channel for each session"
+    config:
+      meta:
+        remediation_tier: auto
     columns:
       - name: session_id
         tests:

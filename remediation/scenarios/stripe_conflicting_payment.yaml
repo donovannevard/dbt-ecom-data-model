@@ -1,0 +1,26 @@
+id: stripe_conflicting_payment
+title: Two versions of the same Stripe payment disagree
+kind: data
+description: >
+  A payment arrives twice with the same id but different amounts. No rule can
+  say which amount is true, so deduplicate_source() excludes the payment from
+  staging entirely rather than guess, and both rows land in the
+  no_conflicting_duplicates test's stored failures: the quarantine table. The
+  build still completes, without that payment's revenue, and both
+  duplicate-key and conflict warnings fire for finance and the upstream team
+  to resolve at source.
+faults:
+  - op: duplicate_row
+    file: seeds/example/commercial/stripe/stripe_payments.csv
+    row: 5
+  # Faults apply in order: after the duplication, row 6 is the copy.
+  - op: set_value
+    file: seeds/example/commercial/stripe/stripe_payments.csv
+    column: amount
+    rows: [6]
+    value: "999.99"
+expect:
+  failing_tests: []
+  warning_tests:
+    - {model: stripe_payments, test: unique_combination_of_columns}
+    - {model: stripe_payments, test: no_conflicting_duplicates}
